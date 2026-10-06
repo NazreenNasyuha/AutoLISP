@@ -80,6 +80,7 @@ Add the following line to your firm's central `acaddoc.lsp` or `gcad.lsp`:
 | `TSEQ` | [`tseq.lsp`](tseq.lsp) | Sequential increment text copier (`A01` $\rightarrow$ `A02`, `1` $\rightarrow$ `2`) | Manhole & Lot Numbering |
 | `R180` | [`r180.lsp`](r180.lsp) | In-place 180° entity flip on click around true geometric centroid | Text & Block Alignment |
 | `REPSIM` | [`repsim.lsp`](repsim.lsp) | Drawing-wide find-and-replace for identical text with layer restriction | Network Re-labeling |
+| `IMPORTCADCSV` | [`importcadcsv.lsp`](importcadcsv.lsp) | Batch import 2-col CSV from [AutoCAD XLS-to-CSV Bridge](../autocad-xls-to-csv-bridge) | Excel Schedule Importer |
 
 ---
 
