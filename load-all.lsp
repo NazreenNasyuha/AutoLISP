@@ -35,7 +35,7 @@
     "getareaha.lsp"
     "getareaacre.lsp"
     "repsim.lsp"
-    "importcadcsv.lsp"
+    "csvupdate.lsp"
   ))
 
   (setq loaded 0 failed 0)
@@ -77,7 +77,7 @@
   (princ "\n  TSEQ           Sequential increment text/mtext copier (A01, A02...)")
   (princ "\n  R180           In-place 180-degree entity flip on click")
   (princ "\n  REPSIM         Global identical text replacement with layer filter")
-  (princ "\n  IMPORTCADCSV   Batch import 2-col CSV from XLS-to-CSV Bridge into CAD")
+  (princ "\n  CSVUPDATE      Batch update CAD text placeholders from Excel CSV")
   (princ "\n================================================================")
   (princ "\n  Type any command above to run. Run LOADALL to reload suite.")
   (princ "\n================================================================\n")

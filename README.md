@@ -7,7 +7,7 @@
 [![Engine](https://img.shields.io/badge/Language-Vanilla%20AutoLISP-red)](https://help.autodesk.com/view/OARX/2024/ENU/?guid=GUID-24C7BA23-7F52-47EB-A694-87C2E5BD92EE)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A battle-tested, production-grade suite of **12 AutoLISP tools** tailored for civil infrastructure, road drainage design (**MSMA compliance**), water reticulation hydraulic modeling (**EPANET**), earthwork catchment delineation, and high-speed drafting automation.
+A battle-tested, production-grade suite of **13 AutoLISP tools** and integrated **Engineering Web Bridge** tailored for civil infrastructure, road drainage design (**MSMA compliance**), water reticulation hydraulic modeling (**EPANET**), earthwork catchment delineation, and high-speed drafting automation.
 
 Engineered from the ground up to be **100% vanilla AutoLISP**—eliminating fragile COM/ActiveX (`vla-`/`vlax-`) dependencies to guarantee native, crash-free performance across **AutoCAD, AutoCAD LT (2024+), GstarCAD, ZWCAD, and BricsCAD**.
 
@@ -24,6 +24,7 @@ Engineered from the ground up to be **100% vanilla AutoLISP**—eliminating frag
   - [3. EPANET Hydraulic Modeling (`EPATABLE`)](#3-epanet-hydraulic-modeling-epatable)
   - [4. Quantity Take-Off & Measurement (`GETAREA*`, `GETLENGTH`)](#4-quantity-take-off--measurement-getarea-getlength)
   - [5. Drafting Accelerators (`TSEQ`, `R180`, `REPSIM`)](#5-drafting-accelerators-tseq-r180-repsim)
+  - [6. Excel-to-CAD Automation Pipeline (Web Bridge & `CSVUPDATE`)](#6-excel-to-cad-automation-pipeline-web-bridge--csvupdate)
 - [Architecture & Design Principles](#architecture--design-principles)
 - [Customization](#customization)
 - [License](#license)
@@ -80,7 +81,7 @@ Add the following line to your firm's central `acaddoc.lsp` or `gcad.lsp`:
 | `TSEQ` | [`tseq.lsp`](tseq.lsp) | Sequential increment text copier (`A01` $\rightarrow$ `A02`, `1` $\rightarrow$ `2`) | Manhole & Lot Numbering |
 | `R180` | [`r180.lsp`](r180.lsp) | In-place 180° entity flip on click around true geometric centroid | Text & Block Alignment |
 | `REPSIM` | [`repsim.lsp`](repsim.lsp) | Drawing-wide find-and-replace for identical text with layer restriction | Network Re-labeling |
-| `IMPORTCADCSV` | [`importcadcsv.lsp`](importcadcsv.lsp) | Batch import 2-col CSV from [AutoCAD XLS-to-CSV Bridge](../autocad-xls-to-csv-bridge) | Excel Schedule Importer |
+| `CSVUPDATE` | [`csvupdate.lsp`](csvupdate.lsp) | Batch replace placeholder text with formatted strings from XLS-to-CSV Bridge | Excel Schedule Importer |
 
 ---
 
@@ -155,6 +156,65 @@ Bridges hydraulic network simulations directly into submission drawings:
   - Select a sample text object to open a lightweight DCL dialog.
   - Replaces all matching strings drawing-wide, with an optional toggle to restrict replacement to the selected entity's layer.
   - Includes an automatic command-line fallback if loaded in CAD environments lacking dynamic DCL support.
+
+---
+
+### 6. Excel-to-CAD Automation Pipeline (Web Bridge & `CSVUPDATE`)
+
+Bridging engineering calculation spreadsheets (pipe sizing, hydraulic gradients, invert levels) directly into drafting drawings without manual typing or error-prone copy-pasting:
+
+```
+┌─────────────────────────────────┐
+│  Engineering Schedule (Excel)   │
+│  (.xlsx / .xls calculation run) │
+└────────────────┬────────────────┘
+                 │ Drag & drop into browser
+                 ▼
+┌─────────────────────────────────┐
+│   AutoCAD XLS-to-CSV Bridge     │
+│  (index.html / React + SheetJS) │
+│  - Flexible Column Mapper       │
+│  - MTEXT Rule Engine            │
+└────────────────┬────────────────┘
+                 │ Exports 2-column CSV (ID, CAD_String)
+                 ▼
+┌─────────────────────────────────┐
+│     AutoLISP: c:csvupdate       │
+│  - In-memory Hash Dictionary    │
+│  - Interactive Text Selection   │
+│  - Instant DXF (entmod) Update  │
+└────────────────┬────────────────┘
+                 │ Batch replaces P1, P2, S1...
+                 ▼
+┌─────────────────────────────────┐
+│   Production-Ready CAD Drawing  │
+│   Formatted MTEXT Annotations   │
+└─────────────────────────────────┘
+```
+
+#### AutoCAD XLS-to-CSV Bridge ([`index.html`](index.html) & [`bridge/index.html`](bridge/index.html))
+- **Zero-Installation Web App**: Self-contained client-side single-page application built with React 18, Tailwind CSS, Lucide Icons, and SheetJS (`xlsx`). Runs locally simply by double-clicking [`index.html`](index.html) or loading it via GitHub Pages.
+- **Smart Column Auto-Mapping**: Automatically detects and maps required engineering columns:
+  1. `ID` — CAD placeholder text (e.g., `P1`, `P2`, `S1`, `MH-01`).
+  2. `Type` — Component discriminator (`Drain` / `Pipe` vs `SIL`).
+  3. `Code` — Drainage/pipe class code (e.g., `A01`, `RC1`).
+  4. `Size` — Diameter / dimension in mm (e.g., `600`, `900`).
+  5. `Length` — Segment length in metres (e.g., `12`).
+  6. `Gradient` — Slope ratio or invert level (e.g., `1000` for 1:1000, or `25.50` for SIL).
+- **Civil Engineering MTEXT Formatting Rules**:
+  - **Sump Invert Level (`SIL`)**: Formats into `{\W0.5;SIL[Gradient]}` (e.g., `{\W0.5;SIL24.50}`).
+  - **Short Pipe ($\le 6\text{ m}$)**: Formats into 4-line vertical stack `{\W0.5;[Code]\P%%c[Size]\P[Length]m\P1:[Gradient]}`.
+  - **Medium Pipe ($\le 14\text{ m}$)**: Formats into 2-line condensed stack `{\W0.5;[Code]-%%c[Size]\P[Length]m-1:[Gradient]}`.
+  - **Long Pipe ($> 14\text{ m}$)**: Formats into 1-line linear label `{\W0.5;[Code]-%%c[Size]-[Length]m-1:[Gradient]}`.
+- **Configurable Settings**: In-app modal with real-time preview allowing customization of width factor (`\W0.5;`), length thresholds ($6\text{ m}$, $14\text{ m}$), and auto-stacking override toggles (saved to `localStorage`).
+- **One-Click Export**: Generates a standard 2-column CSV mapping file ready for CAD ingestion.
+
+#### `CSVUPDATE` ([`csvupdate.lsp`](csvupdate.lsp))
+- Prompts the drafter via standard file dialog (`getfiled`) to select the exported `.csv` file.
+- Reads and parses the file into an in-memory association list / hash dictionary `dict` with uppercase keys for case-insensitive matching.
+- Prompts the drafter to select the target text placeholders (`TEXT` and `MTEXT`) via `ssget` (supporting window/crossing selections or typing `ALL`).
+- Scans each selected entity, strips any surrounding whitespace, looks up the corresponding engineering string from `dict`, and applies native DXF modification (`entmod`) to Group Code 1.
+- Reports the exact number of updated placeholders in the command line window.
 
 ---
 
