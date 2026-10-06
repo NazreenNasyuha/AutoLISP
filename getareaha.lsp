@@ -1,24 +1,45 @@
-(defun c:getareaha ( / ss ent rawArea haArea outText oldCmd )
-  
+;;; ==========================================================================
+;;; GETAREAHA - Select a polyline, copy its area in hectares
+;;; ==========================================================================
+(defun c:getareaha ( / *error* sysVars sysVals decimals unitsPerM ss ent
+                       rawArea outText copy-clip)
+
   ;; =========================================================================
   ;; USER SETTINGS
   ;; =========================================================================
   (setq decimals 4)
+  (setq unitsPerM 1000.0)   ;; drawing units per metre (1000 = drawing in mm)
   ;; =========================================================================
-  
-  (setq oldCmd (getvar "CMDECHO"))
-  (if (setq ss (ssget '((0 . "LWPOLYLINE,POLYLINE"))))
+
+  (setq sysVars '("CMDECHO") sysVals (mapcar 'getvar sysVars))
+
+  (defun *error* (msg)
+    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
+    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+    (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
+      (princ (strcat "\nError: " msg)))
+    (princ))
+
+  (defun copy-clip (txt / path fh)
+    (setq path (strcat (cond ((getenv "TEMP")) ((getenv "TMP")) ("C:\\Temp")) "\\acad_clip.txt"))
+    (if (and (boundp 'startapp) (setq fh (open path "w")))
+      (progn (princ txt fh) (close fh)
+             (startapp (strcat "cmd.exe /c clip < \"" path "\""))
+             T)
+      nil))
+
+  (if (setq ss (ssget "_:S" '((0 . "LWPOLYLINE,POLYLINE"))))
     (progn
       (setq ent (ssname ss 0))
-      (setvar "CMDECHO" 0) (command "_.AREA" "_O" ent) (if oldCmd (setvar "CMDECHO" oldCmd))
+      (setvar "CMDECHO" 0)
+      (command "_.AREA" "_O" ent)
       (setq rawArea (getvar "AREA"))
-      (setq haArea (/ rawArea 10000000000.0))
-      (setq outText (rtos haArea 2 decimals))
-      
-      (startapp (strcat "cmd.exe /c echo | set /p=" outText "| clip"))
-      (princ (strcat "\n>> Area: " outText " Hectares (Copied to Clipboard!)"))
-    )
-    (princ "\nNo polyline selected.")
-  )
+      (setq outText (rtos (/ rawArea (* unitsPerM unitsPerM) 10000.0) 2 decimals))
+      (if (copy-clip outText)
+        (princ (strcat "\n>> Area: " outText " Hectares (Copied to Clipboard!)"))
+        (princ (strcat "\n>> Area: " outText " Hectares (clipboard unavailable)"))))
+    (princ "\nNo polyline selected."))
+
+  (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
   (princ)
 )

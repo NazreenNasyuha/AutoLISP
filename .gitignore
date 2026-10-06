@@ -1,0 +1,52 @@
+# ==============================================================================
+# AutoLISP & CAD .gitignore
+# ==============================================================================
+
+# AutoCAD / GstarCAD / ZWCAD / BricsCAD Drawing Backup & Auto-Save Files
+*.bak
+*.dwg.bak
+*.dxf.bak
+*.sv$
+*.ac$
+*.$$$
+*.bk?
+*.dwl
+*.dwl2
+
+# CAD Log & Error Files
+acad.err
+acad.log
+gstar.err
+gstar.log
+plot.log
+plot.err
+
+# Temporary Clipboard & Working Buffers
+acad_clip.txt
+*.tmp
+
+# Temporary Dialog Definitions (DCL generated at runtime)
+repsim*.dcl
+
+# Windows System Files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Editor & IDE Directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*~
