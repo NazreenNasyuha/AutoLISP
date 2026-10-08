@@ -93,13 +93,11 @@ Add the following line to your firm's central `acaddoc.lsp` or `gcad.lsp`:
 Automates the drafting of road drainage networks per Malaysian Urban Stormwater Management Manual (**MSMA**) standards or regional authority requirements:
 - **Automatic Run Splitting**: Long runs exceeding maximum manhole spacing (default: $30\text{ m}$) are automatically partitioned into equal, compliant sub-segments.
 - **Sump Detection & Deduplication**: Checks within a $100\text{ mm}$ spatial radius to prevent duplicate sump circles from being drawn over existing ones.
-- **Invert Level (SIL) Leaders**: Automatically generates rotated Sump Invert Level leaders (`SIL00.00`) oriented parallel to the drainage gradient. Includes automatic fallback from `MLEADER` to `LINE` + `MTEXT` on CAD platforms without multileader support.
-- **Anti-Inversion Text**: Dynamically rotates text so annotations are always readable from the bottom or right of the drawing sheet (never upside-down).
-- **Collision Avoidance**: Tests spatial bounds above and below the pipe centerline; if text space above is obstructed, annotation automatically shifts below.
-- **Adaptive Stacking**: Formats pipe annotation based on segment length:
-  - $\le 6\text{ m}$: 4-line vertical stack (`A01;` / `600%%c` / `6m` / `1:100`)
-  - $\le 14\text{ m}$: 2-line condensed stack
-  - $> 14\text{ m}$: Single-line inline label
+- **Sump Invert Level (SIL) Leaders**: Generates native `MULTILEADER` entities matching style `1000-T2` (closed filled arrow, 2000mm arrowhead, 2000mm landing distance, 1000mm landing gap, middle of top line attachment).
+  - **Dynamic Line Following**: Leader text and landing lines automatically align parallel with the pipe gradient (`txtAngRad`) at any angle ($0^\circ, 45^\circ, 90^\circ$).
+  - **Left / Right Text Justification**: Supports `Justify: Right` (text on left of landing, leader dogleg on right) or `Justify: Left` (text on right of landing, leader dogleg on left).
+  - **Perpendicular Offset Side**: Configurable leader branch side (`Left` at $+90^\circ$ or `Right` at $-90^\circ$ perpendicular to pipe).
+  - **On-the-Fly Keystroke Toggles**: Type `J` (Justify) or `S` (Side) at any point prompt to toggle side and justification on the fly without exiting `PIPEC`. Includes automatic fallback to `LINE` + `MTEXT` on CAD platforms without multileader support.
 
 #### `GUIDEOFFSET`
 - Allows continuous point-by-point boundary tracing to generate an offset guideline on a dedicated layer (`DRN-GUIDE-1500`).
@@ -274,6 +272,16 @@ Every file features an isolated, easily editable `USER SETTINGS` header block. Y
   (setq txtHgt 2000.0)
   (setq txtStyle "1000-T2")
   (setq txtWidth 0.5)
+
+  (setq mlLayer     "#JRK - RD Drain Text IL")
+  (setq mlStyle     "1000-T2")         ;; Multileader style
+  (setq mlText      "{\\W0.5;SIL00.00}")
+  (setq mlJustify   "Right")           ;; "Right" (text left of landing) or "Left"
+  (setq mlSide      "Left")            ;; Offset side from pipe: "Left" (+90) or "Right" (-90)
+  (setq mlLeadLen   3000.0)            ;; Leader offset from sump rim
+  (setq mlLandDist  2000.0)            ;; Horizontal landing distance
+  (setq mlArrowSize 2000.0)            ;; Arrowhead size
+  (setq mlLandGap   1000.0)            ;; Landing gap
   ;; =========================================================================
 ```
 

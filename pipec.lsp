@@ -6,15 +6,16 @@
                    ;; --- settings ---
                    drainLayer drainColor drainWidth arrowLayer arrowColor arrowWidth
                    sumpLayer sumpColor sumpRad textLayer textColor txtHgt txtStyle txtWidth
-                   mlLayer mlStyle mlText ilMode unitsPerM maxSegM defCode defSize defGrad
+                   mlLayer mlStyle mlText mlJustify mlSide mlLeadLen mlLandDist mlArrowSize mlLandGap
+                   ilMode unitsPerM maxSegM defCode defSize defGrad
                    ;; --- working variables ---
-                   askInfo code size grad pt1 pt2 ang dist numSeg segDist i
+                   askInfo ans code size grad pt1 pt2 ang dist numSeg segDist i
                    sumpPt pA pB segMid segDistM linePt1 linePt2 arrowSize arrowP1 arrowP2
                    txtAngRad pText str mtextStr distAbove distBelow pTextAbove pTextBelow
                    blockedAbove blockedBelow history stepEnts loop sumpCache silCache c e
                    ;; --- local helper functions ---
                    ensure-layer esc-filter pt2d near-p mk finish-cmd restore-ucs
-                   scan-sumps scan-sils mlstyle-exists-p text-blocked-p
+                   scan-sumps scan-sils mlstyle-exists-p ensure-mlstyle text-blocked-p
                    make-il make-il-mleader make-il-basic)
 
   ;; =========================================================================
@@ -41,10 +42,16 @@
   (setq txtStyle "1000-T2")
   (setq txtWidth 0.5)
 
-  (setq mlLayer "#JRK - RD Drain Text IL")
-  (setq mlStyle "1000-T2")             ;; multileader style (used if it exists)
-  (setq mlText "{\\W0.5;SIL00.00}")
-  (setq ilMode 1)                      ;; 1 = MLEADER command (auto-fallback), 2 = LINE + MTEXT only
+  (setq mlLayer     "#JRK - RD Drain Text IL")
+  (setq mlStyle     "1000-T2")             ;; Multileader style (created automatically if missing)
+  (setq mlText      "{\\W0.5;SIL00.00}")   ;; Text content
+  (setq mlJustify   "Right")               ;; Text justification: "Right" (text left of landing) or "Left"
+  (setq mlSide      "Left")                ;; Leader offset side from pipe: "Left" (+90 deg) or "Right" (-90 deg)
+  (setq mlLeadLen   3000.0)                ;; Perpendicular leader length from sump rim (mm)
+  (setq mlLandDist  2000.0)                ;; Horizontal landing length (matches Properties: 2000.0)
+  (setq mlArrowSize 2000.0)                ;; Arrowhead size (matches Properties: 2000.0)
+  (setq mlLandGap   1000.0)                ;; Landing gap (matches Properties: 1000.0)
+  (setq ilMode      1)                     ;; 1 = MLEADER command (auto-fallback), 2 = LINE + MTEXT only
 
   (setq defCode "A01")
   (setq defSize "600")
@@ -143,6 +150,34 @@
     (setq d (dictsearch (namedobjdict) "ACAD_MLEADERSTYLE"))
     (if (and d (dictsearch (cdr (assoc -1 d)) nm)) T nil))
 
+  ;; Ensure the Multileader Style exists; if not, create it with exact specifications
+  (defun ensure-mlstyle (nm / dict mlStyles styleObj)
+    (vl-load-com)
+    (if (and (vl-symbol-value 'vla-get-ActiveDocument)
+             (vl-symbol-value 'vlax-get-acad-object))
+      (vl-catch-all-apply
+        '(lambda ()
+           (setq dict (vla-get-Dictionaries (vla-get-ActiveDocument (vlax-get-acad-object))))
+           (setq mlStyles (vla-item dict "ACAD_MLEADERSTYLE"))
+           (if (vl-catch-all-error-p (vl-catch-all-apply 'vla-item (list mlStyles nm)))
+             (progn
+               (setq styleObj (vla-AddObject mlStyles nm "AcDbMLeaderStyle"))
+               (if (vlax-property-available-p styleObj 'TextHeight)
+                 (vla-put-TextHeight styleObj txtHgt))
+               (if (vlax-property-available-p styleObj 'ArrowSize)
+                 (vla-put-ArrowSize styleObj mlArrowSize))
+               (if (vlax-property-available-p styleObj 'LandingDistance)
+                 (vla-put-LandingDistance styleObj mlLandDist))
+               (if (vlax-property-available-p styleObj 'LandingGap)
+                 (vla-put-LandingGap styleObj mlLandGap))
+               (if (vlax-property-available-p styleObj 'TextLeftAttachmentType)
+                 (vla-put-TextLeftAttachmentType styleObj 1))
+               (if (vlax-property-available-p styleObj 'TextRightAttachmentType)
+                 (vla-put-TextRightAttachmentType styleObj 1))
+               (if (tblsearch "STYLE" txtStyle)
+                 (if (vlax-property-available-p styleObj 'TextStyleName)
+                   (vla-put-TextStyleName styleObj txtStyle)))))))))
+
   ;; Any TEXT/MTEXT crossing a square (2*txtHgt) around pt? (crossing polygon = UCS safe)
   (defun text-blocked-p (pt / h ss)
     (setq h (* txtHgt 2.0))
@@ -155,38 +190,118 @@
     (if ss T nil))
 
   ;; SIL label as a real MLEADER (rotated UCS so text follows the pipe). Returns T on success.
-  (defun make-il-mleader (sPt tPt / last0 newEnt ed ok)
+  (defun make-il-mleader (sPt / last0 newEnt ed ok perpAng arrowPt cornerPt p1_ucs p2_ucs dx obj)
     (setq last0 (entlast) ok nil)
-    (if (mlstyle-exists-p mlStyle) (setvar "CMLEADERSTYLE" mlStyle))
+    (if (mlstyle-exists-p mlStyle)
+      (setvar "CMLEADERSTYLE" mlStyle)
+      (ensure-mlstyle mlStyle))
+    (if (mlstyle-exists-p mlStyle)
+      (setvar "CMLEADERSTYLE" mlStyle))
+
+    ;; 1. Calculate perpendicular leader angle (relative to readable text angle)
+    (setq perpAng (if (= (strcase mlSide) "RIGHT")
+                    (- txtAngRad (/ pi 2.0))
+                    (+ txtAngRad (/ pi 2.0))))
+
+    ;; 2. Arrowhead point at sump edge
+    (setq arrowPt (polar sPt perpAng sumpRad))
+
+    ;; 3. Corner point (landing junction) offset perpendicularly from arrowhead
+    (setq cornerPt (polar arrowPt perpAng mlLeadLen))
+
+    ;; 4. Rotate UCS around Z by txtAngRad so X-axis follows the pipe line
     (setq ucsSaved (list (getvar "UCSNAME") (getvar "UCSORG") (getvar "UCSXDIR") (getvar "UCSYDIR")))
     (command "_.UCS" "_W")
     (command "_.UCS" "_Z" (* 180.0 (/ txtAngRad pi)))
-    (command "_.MLEADER" "_NON" (trans sPt 0 1) "_NON" (trans tPt 0 1) mlText)
+
+    ;; 5. Transform points to active UCS
+    (setq p1_ucs (trans arrowPt 0 1))
+    (setq p2_ucs (trans cornerPt 0 1))
+
+    ;; 6. Control landing direction & justification:
+    ;; If mlJustify is "Right": landing extends to the LEFT (-X in UCS), text is Right-justified.
+    ;; If mlJustify is "Left": landing extends to the RIGHT (+X in UCS), text is Left-justified.
+    (setq dx (if (= (strcase mlJustify) "LEFT") 0.5 -0.5))
+    (setq p2_ucs (list (+ (car p2_ucs) dx) (cadr p2_ucs) 0.0))
+
+    ;; 7. Run MLEADER command
+    (command "_.MLEADER" "_NON" p1_ucs "_NON" p2_ucs mlText)
     (finish-cmd)
     (restore-ucs)
+
+    ;; 8. Post-process created multileader to harden properties
     (setq newEnt (entlast))
     (if (and newEnt (not (equal newEnt last0)))
       (progn
         (setq ed (entget newEnt))
         (if (= (cdr (assoc 0 ed)) "MULTILEADER")
           (progn
+            ;; Enforce target layer
             (entmod (subst (cons 8 mlLayer) (assoc 8 ed) ed))
+            ;; Enforce justification and attachments
+            (vl-catch-all-apply
+              '(lambda ()
+                 (setq obj (vlax-ename->vla-object newEnt))
+                 (vla-put-TextJustify obj (if (= (strcase mlJustify) "LEFT") 1 3))
+                 (if (vlax-property-available-p obj 'TextLeftAttachmentType)
+                   (vla-put-TextLeftAttachmentType obj 1))
+                 (if (vlax-property-available-p obj 'TextRightAttachmentType)
+                   (vla-put-TextRightAttachmentType obj 1))
+                 (if (vlax-property-available-p obj 'ArrowheadSize)
+                   (vla-put-ArrowheadSize obj mlArrowSize))
+                 (if (vlax-property-available-p obj 'LandingDistance)
+                   (vla-put-LandingDistance obj mlLandDist))
+                 (if (vlax-property-available-p obj 'LandingGap)
+                   (vla-put-LandingGap obj mlLandGap))
+                 (vla-update obj)))
             (setq stepEnts (cons newEnt stepEnts) ok T)))))
     ok)
 
-  ;; Fallback SIL label: plain LINE + MTEXT (works everywhere)
-  (defun make-il-basic (sPt tPt)
-    (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 sPt) (cons 11 tPt)))
-    (mk (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 mlLayer) '(100 . "AcDbMText")
-              (list 10 (car tPt) (cadr tPt) 0.0) (cons 40 txtHgt) (cons 41 0.0)
-              '(71 . 7) '(72 . 1) (cons 7 txtStyle) (cons 50 txtAngRad)
-              (list 11 (cos txtAngRad) (sin txtAngRad) 0.0) (cons 1 mlText))))
+  ;; Fallback SIL label: plain LINE + MTEXT (universal fallback)
+  (defun make-il-basic (sPt / perpAng arrowPt cornerPt landPt txtPt jCode aP1 aP2)
+    (setq perpAng (if (= (strcase mlSide) "RIGHT")
+                    (- txtAngRad (/ pi 2.0))
+                    (+ txtAngRad (/ pi 2.0))))
+    (setq arrowPt  (polar sPt perpAng sumpRad)
+          cornerPt (polar arrowPt perpAng mlLeadLen))
 
-  (defun make-il (sPt / tPt ok)
-    (setq tPt (polar (polar sPt txtAngRad (* txtHgt 0.8)) (+ txtAngRad (/ pi 2.0)) (* txtHgt 1.5))
-          ok  nil)
-    (if (= ilMode 1) (setq ok (make-il-mleader sPt tPt)))
-    (if (not ok) (make-il-basic sPt tPt)))
+    ;; Leader line
+    (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 arrowPt) (cons 11 cornerPt)))
+
+    ;; Arrowhead (solid polyline wedge pointing toward sump)
+    (setq aP1 (polar arrowPt (+ perpAng (* pi 0.85)) (* mlArrowSize 0.4))
+          aP2 (polar arrowPt (- perpAng (* pi 0.85)) (* mlArrowSize 0.4)))
+    (mk (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 mlLayer)
+              '(100 . "AcDbPolyline") '(90 . 3) '(70 . 1) (cons 43 0.0)
+              (list 10 (car arrowPt) (cadr arrowPt))
+              (list 10 (car aP1) (cadr aP1))
+              (list 10 (car aP2) (cadr aP2))))
+
+    ;; Horizontal landing line and MText position
+    (if (= (strcase mlJustify) "LEFT")
+      (progn
+        ;; Text on Right of landing (Left justified)
+        (setq landPt (polar cornerPt txtAngRad mlLandDist)
+              txtPt  (polar landPt txtAngRad mlLandGap)
+              jCode  4)) ;; Middle-Left
+      (progn
+        ;; Text on Left of landing (Right justified)
+        (setq landPt (polar cornerPt (+ txtAngRad pi) mlLandDist)
+              txtPt  (polar landPt (+ txtAngRad pi) mlLandGap)
+              jCode  6))) ;; Middle-Right
+
+    (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 cornerPt) (cons 11 landPt)))
+    (mk (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 mlLayer) '(100 . "AcDbMText")
+              (list 10 (car txtPt) (cadr txtPt) 0.0)
+              (cons 40 txtHgt) (cons 41 0.0)
+              (cons 71 jCode) '(72 . 1) (cons 7 txtStyle) (cons 50 txtAngRad)
+              (list 11 (cos txtAngRad) (sin txtAngRad) 0.0)
+              (cons 1 mlText))))
+
+  (defun make-il (sPt / ok)
+    (setq ok nil)
+    (if (= ilMode 1) (setq ok (make-il-mleader sPt)))
+    (if (not ok) (make-il-basic sPt)))
 
   ;; ---- error handler: cancels pending command, restores UCS + sysvars -----
   (defun *error* (msg)
@@ -217,7 +332,13 @@
     (progn
       (setq code (getstring T (strcat "\nCode <" defCode ">: ")))     (if (= code "") (setq code defCode))
       (setq size (getstring T (strcat "\nSize <" defSize ">: ")))     (if (= size "") (setq size defSize))
-      (setq grad (getstring T (strcat "\nGradient <" defGrad ">: "))) (if (= grad "") (setq grad defGrad))))
+      (setq grad (getstring T (strcat "\nGradient <" defGrad ">: "))) (if (= grad "") (setq grad defGrad))
+      (initget "Left Right")
+      (setq ans (getkword (strcat "\nSIL Text Justification [Left/Right] <" mlJustify ">: ")))
+      (if ans (setq mlJustify ans))
+      (initget "Left Right")
+      (setq ans (getkword (strcat "\nSIL Leader Offset Side [Left/Right] <" mlSide ">: ")))
+      (if ans (setq mlSide ans))))
 
   ;; one-off scans of what is already drawn (fast in heavy drawings)
   (setq sumpCache (scan-sumps) silCache (scan-sils))
@@ -226,10 +347,18 @@
 
   ;; ---- main loop ----------------------------------------------------------
   (while loop
-    (initget "Undo")
-    (setq pt1 (getpoint "\nClick Start Point of Drain [Undo] <Exit>: "))
+    (initget "Side Justify Undo")
+    (setq pt1 (getpoint (strcat "\nClick Start Point of Drain [Side/Justify/Undo] <Exit> (Side:" mlSide ", Justify:" mlJustify "): ")))
     (cond
       ((null pt1) (setq loop nil))
+
+      ((= pt1 "Justify")
+       (setq mlJustify (if (= (strcase mlJustify) "RIGHT") "Left" "Right"))
+       (princ (strcat "\n>> SIL Text Justification set to: " mlJustify)))
+
+      ((= pt1 "Side")
+       (setq mlSide (if (= (strcase mlSide) "LEFT") "Right" "Left"))
+       (princ (strcat "\n>> SIL Leader Offset Side set to: " mlSide)))
 
       ((= pt1 "Undo")
        (if history
