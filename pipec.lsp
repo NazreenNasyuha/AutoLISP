@@ -46,7 +46,7 @@
   (setq mlStyle     "1000-T2")             ;; Multileader style (created automatically if missing)
   (setq mlText      "{\\W0.5;SIL00.00}")   ;; Text content
   (setq mlJustify   "Right")               ;; Text justification: "Right" (text left of landing) or "Left"
-  (setq mlSide      "Left")                ;; Leader offset side from pipe: "Left" (+90 deg) or "Right" (-90 deg)
+  (setq mlSide      "Right")               ;; Leader offset side from pipe: "Right" (-90 deg, below) or "Left" (+90 deg, above)
   (setq mlLeadLen   3000.0)                ;; Perpendicular leader length from sump rim (mm)
   (setq mlLandDist  2000.0)                ;; Horizontal landing length (matches Properties: 2000.0)
   (setq mlArrowSize 2000.0)                ;; Arrowhead size (matches Properties: 2000.0)
@@ -150,7 +150,7 @@
     (setq d (dictsearch (namedobjdict) "ACAD_MLEADERSTYLE"))
     (if (and d (dictsearch (cdr (assoc -1 d)) nm)) T nil))
 
-  ;; Ensure the Multileader Style exists; if not, create it with exact specifications
+  ;; Ensure the Multileader Style exists; if not, create/configure it with exact specifications
   (defun ensure-mlstyle (nm / dict mlStyles styleObj)
     (vl-load-com)
     (if (and (vl-symbol-value 'vla-get-ActiveDocument)
@@ -159,24 +159,25 @@
         '(lambda ()
            (setq dict (vla-get-Dictionaries (vla-get-ActiveDocument (vlax-get-acad-object))))
            (setq mlStyles (vla-item dict "ACAD_MLEADERSTYLE"))
-           (if (vl-catch-all-error-p (vl-catch-all-apply 'vla-item (list mlStyles nm)))
+           (if (vl-catch-all-error-p (setq styleObj (vl-catch-all-apply 'vla-item (list mlStyles nm))))
+             (setq styleObj (vla-AddObject mlStyles nm "AcDbMLeaderStyle")))
+           (if (and styleObj (not (vl-catch-all-error-p styleObj)))
              (progn
-               (setq styleObj (vla-AddObject mlStyles nm "AcDbMLeaderStyle"))
-               (if (vlax-property-available-p styleObj 'TextHeight)
-                 (vla-put-TextHeight styleObj txtHgt))
-               (if (vlax-property-available-p styleObj 'ArrowSize)
-                 (vla-put-ArrowSize styleObj mlArrowSize))
-               (if (vlax-property-available-p styleObj 'LandingDistance)
-                 (vla-put-LandingDistance styleObj mlLandDist))
-               (if (vlax-property-available-p styleObj 'LandingGap)
-                 (vla-put-LandingGap styleObj mlLandGap))
-               (if (vlax-property-available-p styleObj 'TextLeftAttachmentType)
-                 (vla-put-TextLeftAttachmentType styleObj 1))
-               (if (vlax-property-available-p styleObj 'TextRightAttachmentType)
-                 (vla-put-TextRightAttachmentType styleObj 1))
+               (if (vlax-property-available-p styleObj 'TextHeight T)
+                 (vlax-put-property styleObj 'TextHeight txtHgt))
+               (if (vlax-property-available-p styleObj 'ArrowSize T)
+                 (vlax-put-property styleObj 'ArrowSize mlArrowSize))
+               (if (vlax-property-available-p styleObj 'LandingDistance T)
+                 (vlax-put-property styleObj 'LandingDistance mlLandDist))
+               (if (vlax-property-available-p styleObj 'LandingGap T)
+                 (vlax-put-property styleObj 'LandingGap mlLandGap))
+               (if (vlax-property-available-p styleObj 'TextLeftAttachmentType T)
+                 (vlax-put-property styleObj 'TextLeftAttachmentType 1))
+               (if (vlax-property-available-p styleObj 'TextRightAttachmentType T)
+                 (vlax-put-property styleObj 'TextRightAttachmentType 1))
                (if (tblsearch "STYLE" txtStyle)
-                 (if (vlax-property-available-p styleObj 'TextStyleName)
-                   (vla-put-TextStyleName styleObj txtStyle)))))))))
+                 (if (vlax-property-available-p styleObj 'TextStyleName T)
+                   (vlax-put-property styleObj 'TextStyleName txtStyle)))))))))
 
   ;; Any TEXT/MTEXT crossing a square (2*txtHgt) around pt? (crossing polygon = UCS safe)
   (defun text-blocked-p (pt / h ss)
@@ -192,11 +193,9 @@
   ;; SIL label as a real MLEADER (rotated UCS so text follows the pipe). Returns T on success.
   (defun make-il-mleader (sPt / last0 newEnt ed ok perpAng arrowPt cornerPt p1_ucs p2_ucs dx obj)
     (setq last0 (entlast) ok nil)
+    (ensure-mlstyle mlStyle)
     (if (mlstyle-exists-p mlStyle)
-      (setvar "CMLEADERSTYLE" mlStyle)
-      (ensure-mlstyle mlStyle))
-    (if (mlstyle-exists-p mlStyle)
-      (setvar "CMLEADERSTYLE" mlStyle))
+      (vl-catch-all-apply 'setvar (list "CMLEADERSTYLE" mlStyle)))
 
     ;; 1. Calculate perpendicular leader angle (relative to readable text angle)
     (setq perpAng (if (= (strcase mlSide) "RIGHT")
@@ -221,44 +220,56 @@
     ;; 6. Control landing direction & justification:
     ;; If mlJustify is "Right": landing extends to the LEFT (-X in UCS), text is Right-justified.
     ;; If mlJustify is "Left": landing extends to the RIGHT (+X in UCS), text is Left-justified.
-    (setq dx (if (= (strcase mlJustify) "LEFT") 0.5 -0.5))
+    (setq dx (if (= (strcase mlJustify) "LEFT") 10.0 -10.0))
     (setq p2_ucs (list (+ (car p2_ucs) dx) (cadr p2_ucs) 0.0))
 
-    ;; 7. Run MLEADER command
-    (command "_.MLEADER" "_NON" p1_ucs "_NON" p2_ucs mlText)
-    (finish-cmd)
+    ;; 7. Run MLEADER command with double Enter to close text entry
+    (setvar "CLAYER" mlLayer)
+    (command "_.MLEADER" "_NON" p1_ucs "_NON" p2_ucs mlText "")
+    (while (> (getvar "CMDACTIVE") 0) (command ""))
     (restore-ucs)
 
-    ;; 8. Post-process created multileader to harden properties
+    ;; 8. Post-process created multileader to harden every property
     (setq newEnt (entlast))
     (if (and newEnt (not (equal newEnt last0)))
       (progn
         (setq ed (entget newEnt))
         (if (= (cdr (assoc 0 ed)) "MULTILEADER")
           (progn
-            ;; Enforce target layer
+            ;; Enforce target layer via entmod
             (entmod (subst (cons 8 mlLayer) (assoc 8 ed) ed))
-            ;; Enforce justification and attachments
+            ;; Enforce every property via VLA to match the exact properties palette
             (vl-catch-all-apply
               '(lambda ()
                  (setq obj (vlax-ename->vla-object newEnt))
-                 (vla-put-TextJustify obj (if (= (strcase mlJustify) "LEFT") 1 3))
-                 (if (vlax-property-available-p obj 'TextLeftAttachmentType)
-                   (vla-put-TextLeftAttachmentType obj 1))
-                 (if (vlax-property-available-p obj 'TextRightAttachmentType)
-                   (vla-put-TextRightAttachmentType obj 1))
-                 (if (vlax-property-available-p obj 'ArrowheadSize)
-                   (vla-put-ArrowheadSize obj mlArrowSize))
-                 (if (vlax-property-available-p obj 'LandingDistance)
-                   (vla-put-LandingDistance obj mlLandDist))
-                 (if (vlax-property-available-p obj 'LandingGap)
-                   (vla-put-LandingGap obj mlLandGap))
+                 (if (vlax-property-available-p obj 'StyleName T)
+                   (vlax-put-property obj 'StyleName mlStyle))
+                 (if (vlax-property-available-p obj 'Layer T)
+                   (vlax-put-property obj 'Layer mlLayer))
+                 (if (vlax-property-available-p obj 'ArrowheadSize T)
+                   (vlax-put-property obj 'ArrowheadSize mlArrowSize))
+                 (if (vlax-property-available-p obj 'DoglegLength T)
+                   (vlax-put-property obj 'DoglegLength mlLandDist))
+                 (if (vlax-property-available-p obj 'LandingGap T)
+                   (vlax-put-property obj 'LandingGap mlLandGap))
+                 (if (vlax-property-available-p obj 'TextHeight T)
+                   (vlax-put-property obj 'TextHeight txtHgt))
+                 (if (vlax-property-available-p obj 'TextLeftAttachmentType T)
+                   (vlax-put-property obj 'TextLeftAttachmentType 1))
+                 (if (vlax-property-available-p obj 'TextRightAttachmentType T)
+                   (vlax-put-property obj 'TextRightAttachmentType 1))
+                 (if (vlax-property-available-p obj 'TextJustify T)
+                   (vlax-put-property obj 'TextJustify (if (= (strcase mlJustify) "LEFT") 1 3)))
+                 (if (vlax-property-available-p obj 'TextRotation T)
+                   (vlax-put-property obj 'TextRotation (+ txtAngRad (/ pi 2.0))))
+                 (if (vlax-property-available-p obj 'ScaleFactor T)
+                   (vlax-put-property obj 'ScaleFactor 1.0))
                  (vla-update obj)))
             (setq stepEnts (cons newEnt stepEnts) ok T)))))
     ok)
 
   ;; Fallback SIL label: plain LINE + MTEXT (universal fallback)
-  (defun make-il-basic (sPt / perpAng arrowPt cornerPt landPt txtPt jCode aP1 aP2)
+  (defun make-il-basic (sPt / perpAng arrowPt cornerPt landPt txtPt jCode aP1 aP2 rotAng)
     (setq perpAng (if (= (strcase mlSide) "RIGHT")
                     (- txtAngRad (/ pi 2.0))
                     (+ txtAngRad (/ pi 2.0))))
@@ -278,24 +289,25 @@
               (list 10 (car aP2) (cadr aP2))))
 
     ;; Horizontal landing line and MText position
+    (setq rotAng (+ txtAngRad (/ pi 2.0)))
     (if (= (strcase mlJustify) "LEFT")
       (progn
         ;; Text on Right of landing (Left justified)
         (setq landPt (polar cornerPt txtAngRad mlLandDist)
               txtPt  (polar landPt txtAngRad mlLandGap)
-              jCode  4)) ;; Middle-Left
+              jCode  1)) ;; Top-Left
       (progn
         ;; Text on Left of landing (Right justified)
         (setq landPt (polar cornerPt (+ txtAngRad pi) mlLandDist)
               txtPt  (polar landPt (+ txtAngRad pi) mlLandGap)
-              jCode  6))) ;; Middle-Right
+              jCode  3))) ;; Top-Right
 
     (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 cornerPt) (cons 11 landPt)))
     (mk (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 mlLayer) '(100 . "AcDbMText")
               (list 10 (car txtPt) (cadr txtPt) 0.0)
               (cons 40 txtHgt) (cons 41 0.0)
-              (cons 71 jCode) '(72 . 1) (cons 7 txtStyle) (cons 50 txtAngRad)
-              (list 11 (cos txtAngRad) (sin txtAngRad) 0.0)
+              (cons 71 jCode) '(72 . 1) (cons 7 txtStyle) (cons 50 rotAng)
+              (list 11 (cos rotAng) (sin rotAng) 0.0)
               (cons 1 mlText))))
 
   (defun make-il (sPt / ok)
