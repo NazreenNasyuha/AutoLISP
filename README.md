@@ -3,9 +3,11 @@
 [![AutoCAD](https://img.shields.io/badge/AutoCAD-2000--2026-0696D7?logo=autodesk&logoColor=white)](https://www.autodesk.com/)
 [![AutoCAD LT](https://img.shields.io/badge/AutoCAD%20LT-2024%2B%20(LISP)-orange)](https://www.autodesk.com/)
 [![GstarCAD](https://img.shields.io/badge/GstarCAD-Compatible-2E7D32)](https://www.gstarcad.net/)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)](https://microsoft.com)
+[![Live App](https://img.shields.io/badge/Live%20App-GitHub%20Pages-brightgreen?logo=github&logoColor=white)](https://nazreennasyuha.github.io/AutoLISP/)
 [![Engine](https://img.shields.io/badge/Language-Vanilla%20AutoLISP-red)](https://help.autodesk.com/view/OARX/2024/ENU/?guid=GUID-24C7BA23-7F52-47EB-A694-87C2E5BD92EE)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> 🚀 **Live Web Application**: Launch the [AutoCAD Smart XLS-to-CSV Bridge](https://nazreennasyuha.github.io/AutoLISP/) directly in your browser.
 
 A battle-tested, production-grade suite of **16 AutoLISP tools** and integrated **Engineering Web Bridge** tailored for civil infrastructure, road drainage design (**MSMA compliance**), water reticulation hydraulic modeling (**EPANET**), earthwork catchment delineation, and high-speed drafting automation.
 
