@@ -1,69 +1,67 @@
 ;;; ==========================================================================
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
-;;; MODULE      : pipec.lsp
-;;; COMMAND     : PIPEC
-;;; DESCRIPTION : Fully Automated Civil Road Drainage Network Generator
-;;;               (Auto-Segmentation, Sump Placement, Hydraulic Flow Arrows,
-;;;                Collision-Aware Pipe Annotations & Parametric SIL Multileaders)
+;;; MODULE      : sewpipec.lsp
+;;; COMMAND     : SEWPIPEC (Alias: PIPEC)
+;;; DESCRIPTION : Fully Automated Civil Sewer / Drainage Reticulation Generator
+;;;               (Auto-Segmentation, Manhole Placement, Hydraulic Flow Arrows,
+;;;                Collision-Aware Pipe Annotations & Parametric Invert Multileaders)
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
 ;;; ==========================================================================
 ;;;
 ;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
 ;;; --------------------------------------------------------------------------
-;;; In road and infrastructure engineering, laying out drainage networks is one
-;;; of the most repetitive drafting tasks. Draft standards require sumps at
-;;; maximum intervals (e.g. 30m), directional flow arrows on every link,
-;;; multi-line hydraulic annotations (Chainage/Code, Diameter, Length, Slope),
-;;; and Sump Invert Level (SIL) multileader callouts at every structure.
+;;; In municipal sewerage and reticulation engineering, drafters model gravity
+;;; sewer mains connecting manholes at regulated maximum distances (e.g. 30m).
+;;; Each segment requires downstream flow direction arrows, diameter/gradient
+;;; annotations, and Manhole Invert Level (IL) multileader callouts.
 ;;;
-;;; PIPEC fully automates this entire workflow in a continuous interactive run:
+;;; SEWPIPEC automates the complete sewer reticulation drafting sequence:
 ;;;   1. Prompts once per session for pipe attributes (Code, Size, Gradient).
 ;;;   2. Interactively accepts consecutive link endpoints (P1 -> P2).
 ;;;   3. Automatically subdivides long spans exceeding `maxSegM` (default 30m)
-;;;      into equal segments and places circular sumps at all junction nodes.
+;;;      into equal segments and places circular manholes at all junction nodes.
 ;;;   4. Synthesizes 3-vertex polyline flow arrows centered on every pipe link.
 ;;;   5. Generates professional multi-line MTEXT annotations with intelligent
 ;;;      collision detection (placing text above or below to avoid clashes).
-;;;   6. Spawns Sump Invert Level (SIL) multileaders with true native AutoCAD
-;;;      MLEADER geometry, matching AutoCAD Properties palette attributes:
+;;;   6. Spawns Invert Level (IL) multileaders with true native AutoCAD MLEADER
+;;;      geometry matching standard Properties palette specifications:
 ;;;        - Arrowhead size : 2000 mm
 ;;;        - Landing length : 2000 mm
 ;;;        - Landing gap    : 1000 mm
 ;;;        - Justification  : Left or Right
-;;;   7. Prevents duplicate sumps and SIL leaders at shared junction nodes via
-;;;      spatial proximity scanning (`sumpCache`, `silCache`).
-;;;   8. Maintains a localized Undo stack (`history` / `stepEnts`) allowing
-;;;      instant backtracking (typing 'U') without breaking the command.
+;;;   7. Prevents duplicate manholes and IL leaders at shared junction nodes.
+;;;   8. Localized Undo stack (`history` / `stepEnts`) supports step-by-step
+;;;      undo (typing 'U') without terminating the session.
 ;;;
 ;;; DRAFTING WORKFLOW:
 ;;; --------------------------------------------------------------------------
-;;;  1. Type PIPEC in the command line.
+;;;  1. Type SEWPIPEC (or PIPEC) in the command line.
 ;;;  2. Enter pipe Code (e.g. A01), Size (e.g. 600), Gradient (e.g. 1:100).
-;;;  3. Click initial Start Point (Sump location).
-;;;  4. Click Next Point (Subsequent Sump or discharge point).
-;;;  5. The pipe segment, intermediate sumps, flow arrows, pipe annotation,
-;;;     and SIL multileaders are generated simultaneously.
+;;;  3. Click initial Start Point (Manhole location).
+;;;  4. Click Next Point (Subsequent Manhole or discharge point).
+;;;  5. The pipe segment, intermediate manholes, flow arrows, pipe annotation,
+;;;     and IL multileaders are generated simultaneously.
 ;;;  6. Continue clicking downstream points or type U to undo the last segment.
 ;;;  7. Press Enter to finish.
 ;;;
 ;;; USER SETTINGS:
 ;;; --------------------------------------------------------------------------
 ;;;  - unitsPerM   : Drawing units per linear metre (default: 1000.0 = mm).
-;;;  - maxSegM     : Maximum pipe run before auto-sump insertion (default: 30.0 m).
-;;;  - drainLayer  : Target layer for pipe linework (default: "#JRK - RD Drain Line").
-;;;  - drainColor  : ACI Color index for pipe linework (default: 4 - Cyan).
+;;;  - maxSegM     : Maximum pipe run before auto-manhole insertion (default: 30.0 m).
+;;;  - drainLayer  : Target layer for sewer linework (default: "#JRK - RD Drain Line").
+;;;  - drainColor  : ACI Color index for linework (default: 4 - Cyan).
 ;;;  - drainWidth  : Polyline global width (default: 250.0 mm).
-;;;  - sumpLayer   : Target layer for sump circles (default: "#JRK - RD Drain Manhole_Sump").
-;;;  - sumpRad     : Radius of circular sumps (default: 600.0 mm).
+;;;  - sumpLayer   : Target layer for manhole circles (default: "#JRK - RD Drain Manhole_Sump").
+;;;  - sumpRad     : Radius of circular manholes (default: 600.0 mm).
 ;;;  - arrowLayer  : Target layer for flow arrows (default: "#JRK - RD Drain FLOW").
 ;;;  - textLayer   : Target layer for pipe labels (default: "#JRK - RD Drain Text").
 ;;;  - txtHgt      : Text height for annotations (default: 2000.0 mm).
-;;;  - mlLayer     : Target layer for SIL Multileaders (default: "#JRK - RD Drain Text IL").
+;;;  - mlLayer     : Target layer for IL Multileaders (default: "#JRK - RD Drain Text IL").
 ;;;  - mlStyle     : Native Multileader style name (default: "1000-T2").
 ;;;  - mlJustify   : Text justification ("Right" or "Left").
 ;;;  - mlSide      : Leader orientation ("Right" = -90 deg / below, "Left" = +90 deg / above).
-;;;  - mlLeadLen   : Leader radial offset length from sump rim (default: 3000.0 mm).
+;;;  - mlLeadLen   : Leader radial offset length from manhole rim (default: 3000.0 mm).
 ;;; ==========================================================================
 (defun c:pipec ( / *error* sysVars sysVals ucsSaved
                    ;; --- settings ---
@@ -542,3 +540,7 @@
   (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
   (princ)
 )
+
+;; Alias SEWPIPEC to execute the pipeline engine
+(defun c:sewpipec () (c:pipec))
+

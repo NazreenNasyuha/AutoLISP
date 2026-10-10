@@ -7,7 +7,7 @@
 [![Engine](https://img.shields.io/badge/Language-Vanilla%20AutoLISP-red)](https://help.autodesk.com/view/OARX/2024/ENU/?guid=GUID-24C7BA23-7F52-47EB-A694-87C2E5BD92EE)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A battle-tested, production-grade suite of **13 AutoLISP tools** and integrated **Engineering Web Bridge** tailored for civil infrastructure, road drainage design (**MSMA compliance**), water reticulation hydraulic modeling (**EPANET**), earthwork catchment delineation, and high-speed drafting automation.
+A battle-tested, production-grade suite of **16 AutoLISP tools** and integrated **Engineering Web Bridge** tailored for civil infrastructure, road drainage design (**MSMA compliance**), water reticulation hydraulic modeling (**EPANET**), earthwork catchment delineation, and high-speed drafting automation.
 
 Engineered from the ground up to be **100% vanilla AutoLISP**—eliminating fragile COM/ActiveX (`vla-`/`vlax-`) dependencies to guarantee native, crash-free performance across **AutoCAD, AutoCAD LT (2024+), GstarCAD, ZWCAD, and BricsCAD**.
 
@@ -19,10 +19,10 @@ Engineered from the ground up to be **100% vanilla AutoLISP**—eliminating frag
 - [Quick Start & Installation](#quick-start--installation)
 - [Command Reference](#command-reference)
 - [Detailed Module Documentation](#detailed-module-documentation)
-  - [1. Road Drainage & Sewerage (`PIPEC`, `GUIDEOFFSET`)](#1-road-drainage--sewerage-pipec-guideoffset)
+  - [1. Road Drainage & Sewerage (`PIPEC`, `SEWPIPEC`, `GUIDEOFFSET`)](#1-road-drainage--sewerage-pipec-sewpipec-guideoffset)
   - [2. Catchment Hydrology & Roof Ridge (`CATCHMENTAREA`)](#2-catchment-hydrology--roof-ridge-catchmentarea)
-  - [3. EPANET Hydraulic Modeling (`EPATABLE`)](#3-epanet-hydraulic-modeling-epatable)
-  - [4. Quantity Take-Off & Measurement (`GETAREA*`, `GETLENGTH`)](#4-quantity-take-off--measurement-getarea-getlength)
+  - [3. EPANET Hydraulic Modeling (`EPANODE`, `EPALINK`)](#3-epanet-hydraulic-modeling-epanode-epalink)
+  - [4. Quantity Take-Off & Measurement (`GETAREA*`, `GETALLAREAM`, `GETLENGTH`)](#4-quantity-take-off--measurement-getarea-getallaream-getlength)
   - [5. Drafting Accelerators (`TSEQ`, `R180`, `REPSIM`)](#5-drafting-accelerators-tseq-r180-repsim)
   - [6. Excel-to-CAD Automation Pipeline (Web Bridge & `CSVUPDATE`)](#6-excel-to-cad-automation-pipeline-web-bridge--csvupdate)
 - [Architecture & Design Principles](#architecture--design-principles)
@@ -69,16 +69,19 @@ Add the following line to your firm's central `acaddoc.lsp` or `gcad.lsp`:
 
 | Command | Source File | Description | Primary Use Case |
 | :--- | :--- | :--- | :--- |
-| `PIPEC` | [`pipec.lsp`](pipec.lsp) | Auto-split road drain generator with sumps, flow arrows, pipe labels & SIL leader | Drainage / Sewerage |
+| `PIPEC` | [`pipec.lsp`](pipec.lsp) | Auto-split road drain generator with sumps, flow arrows, pipe labels & SIL leader | Road Drainage |
+| `SEWPIPEC` | [`sewpipec.lsp`](sewpipec.lsp) | Auto-split sewer reticulation generator with manholes & IL leaders | Sewerage Reticulation |
 | `GUIDEOFFSET` | [`guideoffset.lsp`](guideoffset.lsp) | Trace perimeter and create outward offset guide polyline | Road & Drain Reserve |
 | `CATCHMENTAREA` | [`catchmentarea.lsp`](catchmentarea.lsp) | Delineate 4-quadrant house/road catchment boundary with roof ridge projection | MSMA Hydrology & Runoff |
-| `EPATABLE` | [`epatable.lsp`](epatable.lsp) | Parse EPANET `.rpt` simulation file into oriented CAD result tables | Water Reticulation |
-| `GETAREA` | [`getarea.lsp`](getarea.lsp) | Extract polyline area in all units ($mm^2$, $m^2$, $ha$, $ac$) to clipboard | Bill of Quantities (BQ) |
-| `GETAREAM` | [`getaream.lsp`](getaream.lsp) | Extract polyline area in square meters ($m^2$) to clipboard | Earthwork / Platform Take-off |
-| `GETAREAHA` | [`getareaha.lsp`](getareaha.lsp) | Extract polyline area in Hectares ($ha$) to clipboard | Masterplan Zoning / Land Area |
-| `GETAREAACRE` | [`getareaacre.lsp`](getareaacre.lsp) | Extract polyline area in Acres ($ac$) to clipboard | Land Titling / Survey |
+| `EPANODE` | [`epanode.lsp`](epanode.lsp) | Parse EPANET `.rpt` to auto-label node Elevation, Head & Pressure | Water Reticulation Nodes |
+| `EPALINK` | [`epalink.lsp`](epalink.lsp) | Parse EPANET `.rpt` to auto-label pipe Diameter, Velocity & Headloss | Water Reticulation Pipes |
+| `GETAREA` | [`getarea.lsp`](getarea.lsp) | Extract polyline area in all units ($mm^2$, $m^2$, $ha$, $ac$) to clipboard | Multi-Unit BQ Quantities |
+| `GETALLAREAM` | [`getallaream.lsp`](getallaream.lsp) | Batch select multiple polylines, sum total area in $m^2$ & inject text label | Earthwork / Platform Take-off |
+| `GETAREAM` | [`getaream.lsp`](getaream.lsp) | Extract single polyline area in $m^2$, inject centroid text & copy to clipboard | Pavement / Lot Take-off |
+| `GETAREAHA` | [`getareaha.lsp`](getareaha.lsp) | Extract polyline area in Hectares ($ha$), inject centroid text & copy to clipboard | Masterplan Zoning / Land Area |
+| `GETAREAACRE` | [`getareaacre.lsp`](getareaacre.lsp) | Extract polyline area in Acres ($ac$), inject centroid text & copy to clipboard | Land Titling / Survey |
 | `GETLENGTH` | [`getlength.lsp`](getlength.lsp) | Multi-point continuous distance accumulator copied to clipboard | Pipe / Kerb / Road Runs |
-| `TSEQ` | [`tseq.lsp`](tseq.lsp) | Sequential increment text copier (`A01` $\rightarrow$ `A02`, `1` $\rightarrow$ `2`) | Manhole & Lot Numbering |
+| `TSEQ` | [`tseq.lsp`](tseq.lsp) | Smart sequencer auto-incrementing IDs while protecting MText pipe formatting | Manhole & Lot Renumbering |
 | `R180` | [`r180.lsp`](r180.lsp) | In-place 180° entity flip on click around true geometric centroid | Text & Block Alignment |
 | `REPSIM` | [`repsim.lsp`](repsim.lsp) | Drawing-wide find-and-replace for identical text with layer restriction | Network Re-labeling |
 | `CSVUPDATE` | [`csvupdate.lsp`](csvupdate.lsp) | Batch replace placeholder text with formatted strings from XLS-to-CSV Bridge | Excel Schedule Importer |
@@ -87,17 +90,17 @@ Add the following line to your firm's central `acaddoc.lsp` or `gcad.lsp`:
 
 ## Detailed Module Documentation
 
-### 1. Road Drainage & Sewerage (`PIPEC`, `GUIDEOFFSET`)
+### 1. Road Drainage & Sewerage (`PIPEC`, `SEWPIPEC`, `GUIDEOFFSET`)
 
-#### `PIPEC`
-Automates the drafting of road drainage networks per Malaysian Urban Stormwater Management Manual (**MSMA**) standards or regional authority requirements:
+#### `PIPEC` & `SEWPIPEC`
+Automates the drafting of road drainage and sewer reticulation networks per Malaysian Urban Stormwater Management Manual (**MSMA**) standards or regional authority requirements:
 - **Automatic Run Splitting**: Long runs exceeding maximum manhole spacing (default: $30\text{ m}$) are automatically partitioned into equal, compliant sub-segments.
-- **Sump Detection & Deduplication**: Checks within a $100\text{ mm}$ spatial radius to prevent duplicate sump circles from being drawn over existing ones.
-- **Sump Invert Level (SIL) Leaders**: Generates native `MULTILEADER` entities matching style `1000-T2` (closed filled arrow, 2000mm arrowhead, 2000mm landing distance, 1000mm landing gap, middle of top line attachment).
+- **Sump / Manhole Detection & Deduplication**: Checks within spatial radius to prevent duplicate structures from being drawn over existing ones.
+- **Invert Level (SIL / IL) Leaders**: Generates native `MULTILEADER` entities matching style `1000-T2` (closed filled arrow, 2000mm arrowhead, 2000mm landing distance, 1000mm landing gap, middle of top line attachment).
   - **Dynamic Line Following**: Leader text and landing lines automatically align parallel with the pipe gradient (`txtAngRad`) at any angle ($0^\circ, 45^\circ, 90^\circ$).
   - **Left / Right Text Justification**: Supports `Justify: Right` (text on left of landing, leader dogleg on right) or `Justify: Left` (text on right of landing, leader dogleg on left).
   - **Perpendicular Offset Side**: Configurable leader branch side (`Left` at $+90^\circ$ or `Right` at $-90^\circ$ perpendicular to pipe).
-  - **On-the-Fly Keystroke Toggles**: Type `J` (Justify) or `S` (Side) at any point prompt to toggle side and justification on the fly without exiting `PIPEC`. Includes automatic fallback to `LINE` + `MTEXT` on CAD platforms without multileader support.
+  - **On-the-Fly Keystroke Toggles**: Type `J` (Justify) or `S` (Side) at any point prompt to toggle side and justification on the fly without exiting. Includes automatic fallback to `LINE` + `MTEXT` on CAD platforms without multileader support.
 
 #### `GUIDEOFFSET`
 - Allows continuous point-by-point boundary tracing to generate an offset guideline on a dedicated layer (`DRN-GUIDE-1500`).
@@ -116,28 +119,33 @@ Delineates runoff contribution boundaries for stormwater drainage sizing:
 
 ---
 
-### 3. EPANET Hydraulic Modeling (`EPATABLE`)
+### 3. EPANET Hydraulic Modeling (`EPANODE`, `EPALINK`)
 
-#### `EPATABLE`
-Bridges hydraulic network simulations directly into submission drawings:
-- Opens and parses standard EPANET `.rpt` ASCII output files without external Excel converters.
-- Filters for junction/node results, extracting **Base Demand ($Q$ in $L/s$)**, **Hydraulic Saturated Level ($HSL$ in $m$)**, and **Residual Pressure ($RP$ in $m$)**.
-- Generates an oriented CAD table block for each node at user-specified insertion points and rotation angles.
-- **Value-Keyed Block Naming**: Formats block definitions with node values (e.g., `EpaTbl_J101_H1000_35-2_1-5_22-4`), ensuring that re-running simulations with updated heads will never display stale cached blocks.
+#### `EPANODE`
+Parses EPANET simulation report (`.rpt`) files and automatically annotates junction nodes in CAD:
+- Select an EPANET `.rpt` simulation file through native file dialog.
+- Click node text labels or insertion points to query simulated **Elevation ($m$)**, **Hydraulic Head ($m$)**, and **Pressure ($m$)**.
+- Generates oriented, formatted multi-line MTEXT callouts without requiring manual data copying.
+
+#### `EPALINK`
+Parses EPANET simulation report (`.rpt`) files and automatically annotates pipe links in CAD:
+- Reads pipe link calculation sections from `.rpt` files.
+- Click link identifier labels to generate hydraulic callouts including **Length ($m$)**, **Diameter ($mm$)**, **Flow Velocity ($m/s$)**, and **Headloss Gradient ($m/km$)**.
 
 ---
 
-### 4. Quantity Take-Off & Measurement (`GETAREA*`, `GETLENGTH`)
+### 4. Quantity Take-Off & Measurement (`GETAREA*`, `GETALLAREAM`, `GETLENGTH`)
 
-- **`GETAREA`**: One-click polyline area extraction. Converts the internal CAD area into a formatted string with all units:
+- **`GETAREA`**: One-click polyline area extraction. Converts internal CAD area into a formatted summary with all units:
   ```
   152500000.00 mm2 / 152.500 m2 / 0.015 ha / 0.038 ac
   ```
-  Copies result directly to the Windows clipboard for instant pasting into tender documents or Excel bills of quantities.
-- **`GETAREAM`**: Copies area strictly in square meters ($m^2$, default 4 decimal places).
-- **`GETAREAHA`**: Copies area strictly in Hectares ($ha$).
-- **`GETAREAACRE`**: Copies area strictly in Acres ($ac$).
-- **`GETLENGTH`**: Continuous point-to-point accumulator for measuring curves, kerbs, and pipe alignments. Prints the total distance and places the meter value into the clipboard.
+  Copies summary directly to the Windows clipboard for instant pasting into tender documents or Excel bills of quantities.
+- **`GETALLAREAM`**: Batch-selects multiple polylines (`ssget`), sums their total area, scales from $mm^2$ to $m^2$, prompts for an insertion point, and injects a formatted total text label into the drawing.
+- **`GETAREAM`**: Calculates polyline area in square meters ($m^2$), automatically calculates the polyline vertex centroid, injects a middle-centered text label (`X.XXXX m2`), and copies the numeric value to clipboard.
+- **`GETAREAHA`**: Calculates polyline area in Hectares ($ha$), injects a middle-centered text label (`X.XXXX ha`), and copies the numeric value to clipboard.
+- **`GETAREAACRE`**: Calculates polyline area in Acres ($ac$), injects a middle-centered text label (`X.XXXX ac`), and copies the numeric value to clipboard.
+- **`GETLENGTH`**: Continuous point-to-point accumulator for measuring curves, kerbs, and pipe alignments. Prints total distance and places the meter value into the clipboard.
 
 ---
 

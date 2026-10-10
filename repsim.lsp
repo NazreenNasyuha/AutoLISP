@@ -1,14 +1,59 @@
 ;;; ==========================================================================
-;;; REPSIM - Replace Similar Text
-;;; Select a TEXT/MTEXT object, then replace every identical string in the
-;;; drawing (optionally restricted to the same layer).
-;;; Uses a dynamic DCL dialog; falls back to command-line prompts where DCL is
-;;; unavailable (e.g. AutoCAD LT).
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : repsim.lsp
+;;; COMMAND     : REPSIM
+;;; DESCRIPTION : Intelligent Global Text / MText Search & Replace with
+;;;               Dynamic DCL Dialog UI, Layer Filtering & CLI Fallback
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
 ;;; ==========================================================================
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In civil drafting submissions, pipe schedules, hydraulic annotations, and
+;;; drawing sheet notes often undergo batch revisions (e.g. changing pipe
+;;; class "RCP CL 2" to "RCP CL 3", or modifying a gradient "1:200" to "1:250").
+;;; The native AutoCAD FIND command is bulky, non-layer aware, and slow.
+;;;
+;;; REPSIM delivers an optimized, lightweight replacement engine:
+;;;   1. Prompts the drafter to select any reference TEXT or MTEXT object.
+;;;   2. Extracts the exact target string (DXF group 1) and source layer (group 8).
+;;;   3. Spawns a clean DCL (Dialog Control Language) interface synthesized
+;;;      on-the-fly in the OS temporary directory (via `vl-filename-mktemp`),
+;;;      eliminating the need for external .dcl files.
+;;;   4. If DCL is unavailable or restricted (such as older or stripped LT),
+;;;      it automatically falls back to an interactive command-line interface.
+;;;   5. Provides an optional checkbox/prompt to restrict replacement strictly
+;;;      to objects residing on the exact same layer as the picked source.
+;;;   6. Sanitizes search patterns using wildcard escaping (`rs:esc`) to ensure
+;;;      literals containing characters like `#`, `@`, `*`, or `~` are not
+;;;      misinterpreted as regex wildcards by AutoCAD's `ssget`.
+;;;   7. Performs fast atomic entity modification (`entmod`) across the entire
+;;;      drawing database (`ssget "_X"`).
+;;;   8. Guarantees immediate temp-file cleanup and dialog unloading (`rs:cleanup`)
+;;;      even if the user cancels or presses ESC.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;  1. Type REPSIM in the AutoCAD / GstarCAD command line.
+;;;  2. Pick the source TEXT or MTEXT entity you want to replace.
+;;;  3. In the dialog, type the new replacement string.
+;;;  4. Check or uncheck "Restrict to same layer" (checked by default).
+;;;  5. Click OK. The routine modifies all identical text and reports the count.
+;;;
+;;; DIALOG / CLI ARCHITECTURE:
+;;; --------------------------------------------------------------------------
+;;;  - GUI Mode : Dynamic DCL with disabled target display, active focus input.
+;;;  - CLI Mode : Transparent command-line fallback (`getstring` / `getkword`).
+;;; ==========================================================================
+
 (defun c:REPSIM ( / *error* rs:esc rs:writeDCL rs:cleanup rs:tmpName rs:runDialog rs:askCmdLine
                     sel ent entData entType oldTxt srcLayer newTxt sameLayer
                     dclFile dclId dlgOK ans filt ss i cnt ed e)
 
+  ;; =========================================================================
+  ;; 1. RESOURCE CLEANUP & ERROR HANDLING
+  ;; =========================================================================
   ;; Remove temp DCL / unload dialog (used on normal exit AND on error)
   (defun rs:cleanup ()
     (if (and dclId (> dclId 0)) (progn (unload_dialog dclId) (setq dclId nil)))
@@ -20,6 +65,9 @@
       (princ (strcat "\nREPSIM error: " msg)))
     (princ))
 
+  ;; =========================================================================
+  ;; 2. WILDCARD ESCAPE & TEMP FILE HELPERS
+  ;; =========================================================================
   ;; Escape ssget wildcard characters so strings/layers are matched literally
   (defun rs:esc (str / k ch out)
     (setq k 1 out "")
@@ -35,6 +83,9 @@
       (vl-filename-mktemp "repsim.dcl")
       (strcat (cond ((getenv "TEMP")) ((getenv "TMP")) (".")) "\\repsim_" (itoa (getvar "MILLISECS")) ".dcl")))
 
+  ;; =========================================================================
+  ;; 3. DCL DEFINITION WRITER & DIALOG CONTROLLERS
+  ;; =========================================================================
   ;; Write the dialog definition (quotes escaped as \")
   (defun rs:writeDCL (path / fh)
     (if (setq fh (open path "w"))
@@ -52,7 +103,7 @@
         T)
       nil))
 
-  ;; DCL path. Returns 1 (OK), 0 (Cancel) or nil if the dialog could not be shown.
+  ;; DCL execution controller. Returns 1 (OK), 0 (Cancel) or nil if the dialog could not be shown.
   (defun rs:runDialog ( / result)
     (setq result nil dclFile (rs:tmpName))
     (if (rs:writeDCL dclFile)
@@ -63,15 +114,15 @@
             (set_tile "oldtxt" oldTxt)
             (set_tile "newtxt" "")
             (set_tile "samelayer" "1")
-            (mode_tile "newtxt" 2)                       ;; focus on Replace With
+            (mode_tile "newtxt" 2)                       ;; Focus on Replace With box
             (action_tile "accept"
               "(setq newTxt (get_tile \"newtxt\") sameLayer (get_tile \"samelayer\")) (if (= newTxt \"\") (set_tile \"error\" \"Please enter replacement text.\") (done_dialog 1))")
             (action_tile "cancel" "(done_dialog 0)")
             (setq result (start_dialog))))))
-    (rs:cleanup)                                         ;; unload + delete .dcl right after the UI closes
+    (rs:cleanup)                                         ;; Unload + delete .dcl right after UI closes
     result)
 
-  ;; Command-line fallback. Returns 1 (OK) or 0 (Cancel).
+  ;; Command-line fallback controller. Returns 1 (OK) or 0 (Cancel).
   (defun rs:askCmdLine ()
     (setq newTxt (getstring T "\nReplace With: "))
     (if (or (null newTxt) (= newTxt ""))
@@ -82,7 +133,10 @@
         (setq sameLayer (if (= ans "No") "0" "1"))
         1)))
 
-  ;; ---- 1. Select source object -------------------------------------------
+  ;; =========================================================================
+  ;; 4. SELECTION, UI DISPATCH & REPLACEMENT ENGINE
+  ;; =========================================================================
+  ;; Step 4.1: Select source reference object
   (setq sel (entsel "\nSelect source TEXT or MTEXT object: "))
   (cond
     ((null sel) (princ "\nNothing selected. REPSIM cancelled."))
@@ -96,12 +150,12 @@
        (T
         (setq oldTxt (cdr (assoc 1 entData)) srcLayer (cdr (assoc 8 entData)))
 
-        ;; ---- 2. UI (DCL if available, otherwise command line) --------------
+        ;; Step 4.2: UI Dispatch (DCL dialog if available, CLI fallback otherwise)
         (setq dlgOK nil)
         (if (boundp 'load_dialog) (setq dlgOK (rs:runDialog)))
         (if (null dlgOK) (setq dlgOK (rs:askCmdLine)))
 
-        ;; ---- 3/4. Filter + replace -----------------------------------------
+        ;; Step 4.3: Filter synthesis and batch entmod execution
         (if (= dlgOK 1)
           (progn
             (setq filt (list '(0 . "TEXT,MTEXT") (cons 1 (rs:esc oldTxt))))

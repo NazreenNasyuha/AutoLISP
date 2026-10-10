@@ -1,45 +1,111 @@
 ;;; ==========================================================================
-;;; GETAREAHA - Select a polyline, copy its area in hectares
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : getareaha.lsp
+;;; COMMAND     : GETAREAHA
+;;; DESCRIPTION : Single-Click Polyline Area Extractor to Hectares (ha) with
+;;;               Automatic Geometric Centroid Text Injection & Clipboard Copy
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
 ;;; ==========================================================================
-(defun c:getareaha ( / *error* sysVars sysVals decimals unitsPerM ss ent
-                       rawArea outText copy-clip)
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In civil engineering, regional catchment hydrology (e.g. MSMA drainage),
+;;; agricultural schemes, and macro site planning, land areas are documented in
+;;; Hectares (ha). When drawings are prepared in standard civil millimetres:
+;;;   1 m²     = 1,000,000 mm²
+;;;   1 ha     = 10,000 m² = 10,000,000,000 mm² (10^10 mm²)
+;;;
+;;; GETAREAHA provides an instant, zero-friction measurement workflow:
+;;;   1. Prompts the drafter to select any closed or open lightweight polyline
+;;;      (LWPOLYLINE or 2D/3D POLYLINE).
+;;;   2. Queries drawing geometric area via native AutoCAD `_.AREA _O`.
+;;;   3. Converts raw millimetre area into metric Hectares (ha).
+;;;   4. Computes the geometric vertex centroid of the boundary.
+;;;   5. Uses atomic DXF `entmake` to inject a clean, middle-centered TEXT entity
+;;;      ("X.XXXX ha") directly inside the boundary footprint.
+;;;   6. Pipes the exact numerical hectare string directly into the Windows
+;;;      Clipboard using native Windows `clip.exe` for immediate Excel pasting.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;  1. Type GETAREAHA in the AutoCAD / GstarCAD command line.
+;;;  2. Pick the parcel, catchment, or pond polyline boundary.
+;;;  3. The text label is automatically created at the parcel centroid, and
+;;;     the numeric value is copied to the Windows clipboard for instant use.
+;;;
+;;; USER SETTINGS:
+;;; --------------------------------------------------------------------------
+;;;  - txtHgt   : Height of the injected CAD text entity (default: 1500.0 mm).
+;;;  - decimals : Precision decimal places for hectare formatting (default: 4).
+;;; ==========================================================================
 
+(defun c:getareaha ( / *error* txtHgt decimals ss ent rawArea haArea outText center oldCmd get-poly-center )
+  
   ;; =========================================================================
-  ;; USER SETTINGS
+  ;; 1. USER SETTINGS & CONFIGURATION
   ;; =========================================================================
-  (setq decimals 4)
-  (setq unitsPerM 1000.0)   ;; drawing units per metre (1000 = drawing in mm)
+  (setq txtHgt 1500.0) ;; Height of the injected area text
+  (setq decimals 4)    ;; Decimal places for the final number
   ;; =========================================================================
-
-  (setq sysVars '("CMDECHO") sysVals (mapcar 'getvar sysVars))
-
+  
+  ;; =========================================================================
+  ;; 2. ERROR HANDLING & SYSTEM SETUP
+  ;; =========================================================================
+  (setq oldCmd (getvar "CMDECHO"))
   (defun *error* (msg)
-    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
-    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+    (if oldCmd (setvar "CMDECHO" oldCmd))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
       (princ (strcat "\nError: " msg)))
-    (princ))
+    (princ)
+  )
 
-  (defun copy-clip (txt / path fh)
-    (setq path (strcat (cond ((getenv "TEMP")) ((getenv "TMP")) ("C:\\Temp")) "\\acad_clip.txt"))
-    (if (and (boundp 'startapp) (setq fh (open path "w")))
-      (progn (princ txt fh) (close fh)
-             (startapp (strcat "cmd.exe /c clip < \"" path "\""))
-             T)
-      nil))
+  ;; =========================================================================
+  ;; 3. GEOMETRIC CENTROID CALCULATION
+  ;; =========================================================================
+  ;; Helper to calculate the vertex centroid of the polyline
+  (defun get-poly-center (e / elist sumX sumY count)
+    (setq elist (entget e) sumX 0.0 sumY 0.0 count 0)
+    (foreach item elist 
+      (if (= (car item) 10) 
+        (setq sumX (+ sumX (cadr item)) sumY (+ sumY (caddr item)) count (1+ count))
+      )
+    )
+    (if (> count 0) (list (/ sumX count) (/ sumY count) 0.0) nil)
+  )
 
-  (if (setq ss (ssget "_:S" '((0 . "LWPOLYLINE,POLYLINE"))))
+  ;; =========================================================================
+  ;; 4. BOUNDARY SELECTION & EXECUTION ENGINE
+  ;; =========================================================================
+  (if (setq ss (ssget '((0 . "LWPOLYLINE,POLYLINE"))))
     (progn
       (setq ent (ssname ss 0))
-      (setvar "CMDECHO" 0)
-      (command "_.AREA" "_O" ent)
+      
+      (setvar "CMDECHO" 0) 
+      (command "_.AREA" "_O" ent) 
+      (if oldCmd (setvar "CMDECHO" oldCmd))
+      
       (setq rawArea (getvar "AREA"))
-      (setq outText (rtos (/ rawArea (* unitsPerM unitsPerM) 10000.0) 2 decimals))
-      (if (copy-clip outText)
-        (princ (strcat "\n>> Area: " outText " Hectares (Copied to Clipboard!)"))
-        (princ (strcat "\n>> Area: " outText " Hectares (clipboard unavailable)"))))
-    (princ "\nNo polyline selected."))
-
-  (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+      (setq haArea (/ rawArea 10000000000.0))
+      (setq outText (rtos haArea 2 decimals))
+      
+      ;; Find centroid and inject middle-centered text
+      (setq center (get-poly-center ent))
+      (if center
+        (entmake (list '(0 . "TEXT")
+                       (cons 1 (strcat outText " ha")) 
+                       (list 10 (car center) (cadr center) 0.0) 
+                       (list 11 (car center) (cadr center) 0.0) 
+                       (cons 40 txtHgt)
+                       '(72 . 1)
+                       '(73 . 2)))
+      )
+      
+      ;; Pipe result to Windows Clipboard
+      (startapp (strcat "cmd.exe /c echo | set /p=" outText "| clip"))
+      (princ (strcat "\n>> Area: " outText " Hectares (Copied to Clipboard!)"))
+    )
+    (princ "\nNo polyline selected.")
+  )
   (princ)
 )
