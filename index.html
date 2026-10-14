@@ -442,40 +442,52 @@
         const widthVal = parseFloat(settings.textWidthFactor) || 0.5;
         const widthPrefix = `{\\W${widthVal};`;
 
-        // Extract raw values for Sewerage
-        const sewerIdRaw = String(row[columnMap.sewerId] || '').trim();
-        const glRaw = String(row[columnMap.gl] || '').trim().replace(/m$/i, '');
-        const ilRaw = String(row[columnMap.il] || '').trim().replace(/m$/i, '');
-        let depthRaw = String(row[columnMap.depth] || '').trim().replace(/m$/i, '');
-
-        // Extract raw values for Drainage
-        const drainIdRaw = String(row[columnMap.drainId] || '').trim();
-        const sizeRaw = String(row[columnMap.size] || '').trim().replace(/%%c/g, '').replace(/mm$/i, '');
-        const lengthRaw = String(row[columnMap.length] || '').trim().replace(/m$/i, '');
+        // 1. RAW DATA EXTRACTION
+        let sewerIdRaw = String(row[columnMap.sewerId] || '').trim();
+        let drainIdRaw = String(row[columnMap.drainId] || '').trim();
+        let glRaw = String(row[columnMap.gl] || '').trim();
+        let ilRaw = String(row[columnMap.il] || '').trim();
+        let depthRaw = String(row[columnMap.depth] || '').trim();
+        let sizeRaw = String(row[columnMap.size] || '').trim();
+        let lengthRaw = String(row[columnMap.length] || '').trim();
         let gradRaw = String(row[columnMap.gradient] || '').trim();
 
-        // Standardize Gradient: if user entered '1:1000' or '1 / 1000', strip '1:' or '1/'
+        // 2. THE BLANK ROW KILLER (Trap 1)
+        // If there's no ID, and no Size, and no IL... it's a blank row or sub-header. Skip it entirely.
+        if (!sewerIdRaw && !drainIdRaw && !sizeRaw && !ilRaw) return null;
+
+        // 3. THE DIRTY NUMBER & EXCEL ERROR CLEANER (Traps 2 & 3)
+        const cleanNumber = (val) => {
+          if (val.includes('#DIV/0!') || val.includes('#REF!') || val.includes('#VALUE!')) return '?';
+          // Strips out "mm", "m", "ø" but keeps decimals and numbers
+          return val.replace(/[^0-9.]/g, ''); 
+        };
+
+        sizeRaw = cleanNumber(sizeRaw);
+        lengthRaw = cleanNumber(lengthRaw);
+        glRaw = cleanNumber(glRaw);
+        ilRaw = cleanNumber(ilRaw);
+        
+        // Clean Gradient (handles "1:100", "1/100", or just "100")
         if (settings.cleanGradientPrefix) {
           gradRaw = gradRaw.replace(/^1\s*[:/]\s*/i, '');
         }
 
-        // Check if row has Sewerage data
         const hasSewerData = Boolean(glRaw || ilRaw || depthRaw);
-        // Check if row has Drainage data
         const hasDrainData = Boolean(sizeRaw || lengthRaw || gradRaw);
 
         let rowCategory = 'DRAINAGE';
         let cadString = '';
         let conditionBadge = '';
-        let effectiveId = '';
+        let effectiveId = sewerIdRaw || drainIdRaw;
+
+        // Catch rogue data that slipped through but has no valid ID
+        if (!effectiveId || effectiveId === '?') return null;
 
         if (hasSewerData && (!hasDrainData || detectedMode === 'SEWERAGE')) {
-          // ─── SEWERAGE MANHOLE FORMATTING RULE ───
           rowCategory = 'SEWERAGE';
-          effectiveId = sewerIdRaw || drainIdRaw || `MH_${index + 1}`;
-
-          // If depth is not provided but GL & IL are numbers, compute depth = GL - IL
-          if (!depthRaw && glRaw && ilRaw) {
+          
+          if (!depthRaw && glRaw !== '?' && ilRaw !== '?') {
             const numGL = parseFloat(glRaw);
             const numIL = parseFloat(ilRaw);
             if (!isNaN(numGL) && !isNaN(numIL)) {
@@ -487,51 +499,33 @@
           const ilDisplay = ilRaw || '00.00';
           const depthDisplay = depthRaw || '0.00';
 
-          // Rule: {\W[Width];[ID];\PGL: [GL]m\PIL: [IL]m\PDEPTH: [Depth]m}
           cadString = `${widthPrefix}${effectiveId};\\PGL: ${glDisplay}m\\PIL: ${ilDisplay}m\\PDEPTH: ${depthDisplay}m}`;
           conditionBadge = 'Manhole (4-Line Label)';
         } else {
-          // ─── DRAINAGE PIPING FORMATTING RULES ───
           rowCategory = 'DRAINAGE';
-          effectiveId = drainIdRaw || sewerIdRaw || `P_${index + 1}`;
-          const sizeDisplay = sizeRaw || '600';
-          const gradDisplay = gradRaw || '1000';
+          const sizeDisplay = sizeRaw || '225';
+          const gradDisplay = gradRaw || '100';
 
           const lenNum = parseFloat(lengthRaw);
           const hasValidLen = !isNaN(lenNum) && lenNum >= 0;
-          const lenDisplay = hasValidLen 
-            ? (Number.isInteger(lenNum) ? lenNum.toString() : lenNum.toFixed(1))
-            : (lengthRaw || '0');
+          const lenDisplay = hasValidLen ? (Number.isInteger(lenNum) ? lenNum.toString() : lenNum.toFixed(1)) : '0';
 
           const isShort = hasValidLen && lenNum <= settings.shortPipeThreshold;
           const isMedium = hasValidLen && lenNum > settings.shortPipeThreshold && lenNum <= settings.mediumPipeThreshold;
 
           if (settings.smartLengthFormatting && isShort) {
-            // Condition A (Length <= [ShortThreshold]): 4 Paragraphs
-            // {\W[Width];[ID];\P[Size]%%c\P[Length]m\P1:[Gradient]}
             cadString = `${widthPrefix}${effectiveId};\\P${sizeDisplay}%%c\\P${lenDisplay}m\\P1:${gradDisplay}}`;
             conditionBadge = `Short Pipe (<= ${settings.shortPipeThreshold}m, 4-Line)`;
           } else if (settings.smartLengthFormatting && isMedium) {
-            // Condition B (Length > [ShortThreshold] AND <= [MedThreshold]): 2 Paragraphs
-            // {\W[Width];[ID]; [Size]%%c\P[Length]m 1:[Gradient]}
             cadString = `${widthPrefix}${effectiveId}; ${sizeDisplay}%%c\\P${lenDisplay}m 1:${gradDisplay}}`;
             conditionBadge = `Medium Pipe (<= ${settings.mediumPipeThreshold}m, 2-Line)`;
           } else {
-            // Condition C (Length > [MedThreshold] OR Auto-Format OFF): 1 Straight Line
-            // {\W[Width];[ID]; [Size]%%c [Length]m 1:[Gradient]}
             cadString = `${widthPrefix}${effectiveId}; ${sizeDisplay}%%c ${lenDisplay}m 1:${gradDisplay}}`;
-            conditionBadge = settings.smartLengthFormatting 
-              ? `Long Pipe (> ${settings.mediumPipeThreshold}m, 1-Line)`
-              : 'Smart Formatting OFF (1-Line)';
+            conditionBadge = settings.smartLengthFormatting ? `Long Pipe (> ${settings.mediumPipeThreshold}m, 1-Line)` : 'Smart Formatting OFF';
           }
         }
 
-        // Simulated visual display lines for CAD canvas rendering
-        const visualLines = cadString
-          .replace(/^\{\\W[\d.]+;/, '')
-          .replace(/\}$/, '')
-          .replace(/%%c/g, 'Ø')
-          .split('\\P');
+        const visualLines = cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
 
         return {
           id: effectiveId,
@@ -539,7 +533,6 @@
           cadString,
           conditionBadge,
           visualLines,
-          // Stored extracted attributes for preview
           drainDetails: { size: sizeRaw, length: lengthRaw, gradient: gradRaw },
           sewerDetails: { gl: glRaw, il: ilRaw, depth: depthRaw },
           rawRow: row,
@@ -555,6 +548,8 @@
         const uniqueMap = new Map();
         
         rawFormatted.forEach(item => {
+          if (!item) return;
+
           // Skip if no valid ID was found (just pass it through)
           if (!item.id || item.id.trim() === '' || item.id.startsWith('P_') || item.id.startsWith('MH_')) {
             uniqueMap.set(Math.random().toString(), item); 
