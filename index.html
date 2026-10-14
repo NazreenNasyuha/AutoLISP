@@ -546,9 +546,60 @@
         };
       };
 
-      // Process rows through formatting engine
+      // ─────────────────────────────────────────────────────────────
+      // PROCESS ROWS & SMART DEDUPLICATION ENGINE
+      // ─────────────────────────────────────────────────────────────
       const processedRows = useMemo(() => {
-        return rawRows.map((r, i) => formatRow(r, i));
+        const rawFormatted = rawRows.map((r, i) => formatRow(r, i));
+        
+        const uniqueMap = new Map();
+        
+        rawFormatted.forEach(item => {
+          // Skip if no valid ID was found (just pass it through)
+          if (!item.id || item.id.trim() === '' || item.id.startsWith('P_') || item.id.startsWith('MH_')) {
+            uniqueMap.set(Math.random().toString(), item); 
+            return;
+          }
+          
+          const cleanId = item.id.toUpperCase();
+          
+          if (!uniqueMap.has(cleanId)) {
+            // First time seeing this ID, add it to the map
+            uniqueMap.set(cleanId, item);
+          } else {
+            // DUPLICATE DETECTED! Run intelligent merging logic
+            const existing = uniqueMap.get(cleanId);
+            
+            if (item.category === 'SEWERAGE') {
+              // For Manholes: Compare the Invert Levels. Keep the LOWEST IL.
+              const existingIL = parseFloat(existing.sewerDetails.il);
+              const newIL = parseFloat(item.sewerDetails.il);
+              
+              if (!isNaN(existingIL) && !isNaN(newIL) && newIL < existingIL) {
+                // The new row is deeper! Overwrite the old one and recalculate Depth.
+                const widthVal = parseFloat(settings.textWidthFactor) || 0.5;
+                const gl = parseFloat(item.sewerDetails.gl) || parseFloat(existing.sewerDetails.gl);
+                const depth = (gl - newIL).toFixed(2);
+                
+                item.cadString = `{\\W${widthVal};${item.id};\\PGL: ${gl.toFixed(2)}m\\PIL: ${newIL.toFixed(2)}m\\PDEPTH: ${depth}m}`;
+                item.conditionBadge = 'Merged Duplicate (Lowest IL Used)';
+                
+                // Update the visual CAD preview
+                item.visualLines = item.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').split('\\P');
+                
+                uniqueMap.set(cleanId, item);
+              } else {
+                // Existing IL is already the lowest. Just update the badge to show we merged it.
+                existing.conditionBadge = 'Merged Duplicate (Lowest IL Used)';
+              }
+            } else {
+              // For Drainage Pipes (which shouldn't share IDs), flag it but keep the first one
+              existing.conditionBadge = 'Duplicate ID Ignored';
+            }
+          }
+        });
+        
+        return Array.from(uniqueMap.values());
       }, [rawRows, columnMap, settings, detectedMode]);
 
       // Filtered rows for table view
