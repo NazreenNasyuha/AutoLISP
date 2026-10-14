@@ -1,7 +1,41 @@
+;;; ==========================================================================
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : catchmentarea.lsp
+;;; COMMAND     : CATCHMENTAREA
+;;; DESCRIPTION : Automated 4-Corner Catchment Boundary & Roof Ridge Area Splitter
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
+;;; ==========================================================================
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In civil road drainage and stormwater runoff design, drafters must calculate
+;;; rainfall catchment areas contributing to each road drain run. This typically
+;;; involves dividing compound house plots, road corridors, and roof pitch planes
+;;; along the ridgeline.
+;;;
+;;; CATCHMENTAREA automates this calculation in seconds:
+;;;   1. Prompts the drafter to click 4 Inner Boundary Corners (e.g., house footprint).
+;;;   2. Prompts for 4 Outer Boundary Corners (e.g., drain/fence parcel boundary).
+;;;   3. Prompts for the Roof Ridge alignment (Start & End points).
+;;;   4. Mathematically sorts all points counter-clockwise, resolves ridge projection,
+;;;      and generates 4 closed polyline catchment polygons on layer "DRN-TOTALAREA".
+;;;   5. Automatically calculates each polygon's area in square meters (m2) and
+;;;      injects a centered MTEXT label into each centroid.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;   1. Type `CATCHMENTAREA` in the CAD command line.
+;;;   2. Click the 4 inner corners in sequence.
+;;;   3. Click the 4 outer corners in sequence.
+;;;   4. Click the two ends of the roof ridge line.
+;;;   5. Catchment boundaries and m2 labels are drawn automatically.
+;;; ==========================================================================
+
 (defun c:catchmentarea( / *error* layerName col txtHgt oldOsnap oldCmd
-                       iPt1 iPt2 iPt3 iPt4 oPt1 oPt2 oPt3 oPt4 rPtUser1 rPtUser2 rPt1 rPt2
-                       iList oList oSorted iSorted i0 i1 i2 i3 o0 o1 o2 o3 r0 r1 r2 r3 axisA axisB
-                       sort-ccw align-lists get-closest make-poly midpt project-pt)
+                        iPt1 iPt2 iPt3 iPt4 oPt1 oPt2 oPt3 oPt4 rPtUser1 rPtUser2 rPt1 rPt2
+                        iList oList oSorted iSorted i0 i1 i2 i3 o0 o1 o2 o3 r0 r1 r2 r3 axisA axisB
+                        sort-ccw align-lists get-closest make-poly midpt project-pt)
   (vl-load-com)
   
   ;; =========================================================================
@@ -47,7 +81,7 @@
               (defun get-closest (pt pA pB) (if (< (distance pt pA) (distance pt pB)) pA pB))
               (defun project-pt (P A B / vAB vAP dotABAB dotAPAB t-val) (setq vAB (list (- (car B) (car A)) (- (cadr B) (cadr A)) 0.0) vAP (list (- (car P) (car A)) (- (cadr P) (cadr A)) 0.0) dotABAB (+ (* (car vAB) (car vAB)) (* (cadr vAB) (cadr vAB)))) (if (= dotABAB 0.0) A (progn (setq dotAPAB (+ (* (car vAP) (car vAB)) (* (cadr vAP) (cadr vAB))) t-val (/ dotAPAB dotABAB)) (list (+ (car A) (* t-val (car vAB))) (+ (cadr A) (* t-val (cadr vAB))) 0.0))))
 
-              ;; NEW: Make Polygon, Extract Area, and Label it instantly
+              ;; Make Polygon, Extract Area, and Label it instantly
               (defun make-poly (ptList / cleanList lastPt entData plEnt area mArea cenX cenY)
                 (setq cleanList nil lastPt nil)
                 (foreach p ptList (if (not (equal p lastPt 1e-6)) (setq cleanList (cons p cleanList) lastPt p)))

@@ -1,3 +1,42 @@
+;;; ==========================================================================
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : epanode.lsp
+;;; COMMAND     : EPANODE
+;;; DESCRIPTION : EPANET Hydraulic Junction Node Simulation Results Annotator
+;;;               (Parametric Hydraulic Summary Table Generator)
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
+;;; ==========================================================================
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In water supply planning and infrastructure reticulation, engineers run
+;;; hydraulic models in EPANET to verify pressure and head at critical nodes.
+;;; Drafters must present these metrics clearly on approval drawings.
+;;;
+;;; EPANODE automates this data transfer:
+;;;   1. Parses native EPANET simulation report files (.rpt or .txt).
+;;;   2. Extracts node demand (Q), hydraulic head (HSL), and residual pressure (RP).
+;;;   3. Prompts the drafter for insertion points and rotation angles for each node.
+;;;   4. Automatically generates a cleanly structured 4-row engineering table:
+;;;        - Row 1: Node Identification Tag
+;;;        - Row 2: Hydraulic Slope Level (HSL in m)
+;;;        - Row 3: Water Demand Flow (Q in LPS)
+;;;        - Row 4: Residual Pressure (RP in m)
+;;;   5. Packages each node table into an anonymous, reusable CAD block with
+;;;      precise coordinate alignment and OSNAP restoration.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;   1. Type `EPANODE` in the CAD command line.
+;;;   2. Select the EPANET `.rpt` or `.txt` output report file.
+;;;   3. Specify the Text Height (default: 1000 drawing units).
+;;;   4. For each junction node:
+;;;        - Click the top-left insertion position.
+;;;        - Click rotation angle (or press Enter to reuse last angle).
+;;;   5. Summary table block is inserted automatically.
+;;; ==========================================================================
+
 (defun c:epanode ( / *error* defTxt oldOsnap filename file line data inNodeSection 
                       nodeList nodeData nodeID qVal hslVal rpVal 
                       txtHgt lastAng count total 

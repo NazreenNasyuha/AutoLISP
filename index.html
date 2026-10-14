@@ -362,9 +362,19 @@
         let headerRowIndex = 0;
         for (let i = 0; i < rawArray.length; i++) {
           const rowText = rawArray[i].join(' ').toLowerCase();
-          // If the row contains standard JRK table headers, lock it in as the starting row
-          if (rowText.includes('manhole no') || rowText.includes('pipe size') || rowText.includes('drain id') ||
-              rowText.includes('pipe id') || rowText.includes('drain name') || rowText.includes('invert level')) {
+          // Looks for any standard JRK Drainage or Sewerage header keyword
+          if (
+            rowText.includes('manhole no') || 
+            rowText.includes('pipe size') || 
+            rowText.includes('drain id') ||
+            rowText.includes('drain name') || // Added to match your image
+            rowText.includes('diameter') ||
+            rowText.includes('length') ||
+            rowText.includes('gradient') ||
+            rowText.includes('grade') || // Added to match your image
+            rowText.includes('pipe id') ||
+            rowText.includes('invert level')
+          ) {
             headerRowIndex = i;
             break;
           }

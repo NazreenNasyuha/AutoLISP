@@ -1,3 +1,38 @@
+;;; ==========================================================================
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : getallaream.lsp
+;;; COMMAND     : GETALLAREAM
+;;; DESCRIPTION : Batch Closed Polyline Area Calculation & Cumulative Summation
+;;;               (Auto Centroid M2 Text Label Inserter + Summary Total)
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
+;;; ==========================================================================
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In civil site grading, road reserve allocation, and master planning, drafters
+;;; must often calculate areas for dozens or hundreds of parcels, building pads,
+;;; or catchment sub-basins at once.
+;;;
+;;; GETALLAREAM streamlines batch area extraction:
+;;;   1. Prompts for a window or cross selection of closed polylines.
+;;;   2. Filters out open polylines and invalid geometries automatically.
+;;;   3. Loops through each polyline, querying native object area.
+;;;   4. Converts square millimeters (drawing units) to square meters (m2).
+;;;   5. Computes the geometric centroid vertex average of each polygon.
+;;;   6. Injects a centered, cleanly formatted text label (e.g. "125.500 m2")
+;;;      directly into the center of each polyline.
+;;;   7. Aggregates all individual areas and prints the Grand Total to the
+;;;      CAD command prompt.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;   1. Type `GETALLAREAM` in the CAD command line.
+;;;   2. Select all closed polylines using a crossing window.
+;;;   3. Individual m2 text labels are injected at polygon centers.
+;;;   4. Cumulative total m2 is reported at the command prompt.
+;;; ==========================================================================
+
 (defun c:getallaream ( / ss i ent totalArea area mArea center txtHgt oldCmd)
   ;; =========================================================================
   ;; USER SETTINGS

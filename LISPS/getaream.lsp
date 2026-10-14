@@ -1,3 +1,33 @@
+;;; ==========================================================================
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : getaream.lsp
+;;; COMMAND     : GETAREAM
+;;; DESCRIPTION : Dedicated Polyline Area Extraction in Square Meters (m2) with
+;;;               Centroid Text Annotation & Windows Clipboard Sync
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
+;;; ==========================================================================
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In road drainage catchment delineation, lot sizing, and hydraulic runoff
+;;; computations, drafters need fast, precise square meter readouts.
+;;;
+;;; GETAREAM provides instantaneous Square Meter extraction:
+;;;   1. Prompts the drafter to select any polyline boundary.
+;;;   2. Queries native object area in square millimeters.
+;;;   3. Converts to Square Meters using standard metric scaling (1,000,000 mm2/m2).
+;;;   4. Places a centered text entity directly at the polyline geometric center
+;;;      formatted with 4 decimal places and "m2" suffix.
+;;;   5. Pipes the numerical Square Meter value directly to the Windows Clipboard.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;   1. Type `GETAREAM` in the CAD command line.
+;;;   2. Click any closed polyline.
+;;;   3. Centroid text label is placed automatically, and result is copied to clipboard.
+;;; ==========================================================================
+
 (defun c:getaream ( / ss ent rawArea mArea outText center oldCmd )
   
   ;; =========================================================================

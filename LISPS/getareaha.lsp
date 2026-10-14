@@ -1,3 +1,33 @@
+;;; ==========================================================================
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : getareaha.lsp
+;;; COMMAND     : GETAREAHA
+;;; DESCRIPTION : Dedicated Polyline Area Extraction in Hectares (ha) with
+;;;               Centroid Text Annotation & Windows Clipboard Sync
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
+;;; ==========================================================================
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In municipal township planning, environmental impact assessments, and
+;;; bulk earthwork catchment zoning, parcel and pond areas are measured in Hectares.
+;;;
+;;; GETAREAHA provides instantaneous Hectare extraction:
+;;;   1. Prompts the drafter to select any polyline boundary.
+;;;   2. Queries native object area in square millimeters.
+;;;   3. Converts to Hectares using metric conversion (10,000,000,000 mm2/ha).
+;;;   4. Places a centered text entity directly at the polyline geometric center
+;;;      formatted with 4 decimal places and "ha" suffix.
+;;;   5. Pipes the numerical Hectare value directly to the Windows Clipboard.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;   1. Type `GETAREAHA` in the CAD command line.
+;;;   2. Click any closed polyline.
+;;;   3. Centroid text label is placed automatically, and result is copied to clipboard.
+;;; ==========================================================================
+
 (defun c:getareaha ( / ss ent rawArea haArea outText center oldCmd )
   
   ;; =========================================================================

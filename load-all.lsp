@@ -15,7 +15,7 @@
 ;;;
 ;;; LOADALL provides automated library initialization:
 ;;;   1. Dynamically detects its host directory using `findfile` and `DWGPREFIX`.
-;;;   2. Systematically iterates through all 16 specialized civil engineering
+;;;   2. Systematically iterates through all 15 specialized civil engineering
 ;;;      LISP modules using error-trapped `vl-catch-all-apply 'load`.
 ;;;   3. Accurately reports loading status and any missing dependencies.
 ;;;   4. Prints a formatted ASCII command directory to the CAD command line,
@@ -27,7 +27,7 @@
 ;;; --------------------------------------------------------------------------
 ;;;  1. Drag and drop `load-all.lsp` into any open AutoCAD / GstarCAD window,
 ;;;     or type `LOADALL` in the command line.
-;;;  2. All 16 automation modules are instantly compiled into memory.
+;;;  2. All 15 automation modules are instantly compiled into memory.
 ;;;  3. The interactive command directory is displayed in the command history.
 ;;; ==========================================================================
 
@@ -71,7 +71,6 @@
     "guideoffset.lsp"
     "pipec.lsp"
     "r180.lsp"
-    "repsim.lsp"
     "sewpipec.lsp"
     "tseq.lsp"
   ))
@@ -81,10 +80,22 @@
   ;; =========================================================================
   (setq loaded 0 failed 0)
   (foreach f files
-    (setq fullPath (if (/= dir "") (strcat dir f) f))
-    (if (not (findfile fullPath))
-      (setq fullPath (findfile f)))
-    (if (and fullPath (findfile fullPath))
+    (setq fullPath nil)
+    (cond
+      ;; 1. Check LISPS subfolder relative to load-all.lsp directory
+      ((and (/= dir "") (findfile (strcat dir "LISPS\\" f)))
+       (setq fullPath (findfile (strcat dir "LISPS\\" f))))
+      ;; 2. Check direct LISPS subfolder in AutoCAD search path
+      ((findfile (strcat "LISPS\\" f))
+       (setq fullPath (findfile (strcat "LISPS\\" f))))
+      ;; 3. Check root directory relative to load-all.lsp (fallback)
+      ((and (/= dir "") (findfile (strcat dir f)))
+       (setq fullPath (findfile (strcat dir f))))
+      ;; 4. Check global AutoCAD support paths
+      ((findfile f)
+       (setq fullPath (findfile f))))
+
+    (if fullPath
       (if (vl-catch-all-error-p (vl-catch-all-apply 'load (list fullPath)))
         (progn
           (princ (strcat "\n  [FAILED] " f))
@@ -121,7 +132,6 @@
   (princ "\n  GUIDEOFFSET    Trace boundary and generate offset guide line")
   (princ "\n  PIPEC          Road drain pipe generator with sumps & SIL labels")
   (princ "\n  R180           In-place 180-degree entity flip on click")
-  (princ "\n  REPSIM         Global identical text replacement with layer filter")
   (princ "\n  SEWPIPEC       Sewer pipe network generator with manholes & IL")
   (princ "\n  TSEQ           Sequential increment text/mtext copier (A01, A02...)")
   (princ "\n================================================================")

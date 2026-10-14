@@ -1,139 +1,110 @@
 ;;; ==========================================================================
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
 ;;; MODULE      : sewpipec.lsp
-;;; COMMAND     : SEWPIPEC (Alias: PIPEC)
-;;; DESCRIPTION : Fully Automated Civil Sewer / Drainage Reticulation Generator
-;;;               (Auto-Segmentation, Manhole Placement, Hydraulic Flow Arrows,
-;;;                Collision-Aware Pipe Annotations & Parametric Invert Multileaders)
+;;; COMMAND     : SEWPIPEC
+;;; DESCRIPTION : Fully Automated Civil Sewer Reticulation Generator
+;;;               (Auto-Segmentation, Manhole Placement, Flow Arrows,
+;;;                Auto-Sequencing Manhole IDs & Invert Multileaders)
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
-;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
 ;;; ==========================================================================
 ;;;
 ;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
 ;;; --------------------------------------------------------------------------
-;;; In municipal sewerage and reticulation engineering, drafters model gravity
-;;; sewer mains connecting manholes at regulated maximum distances (e.g. 30m).
-;;; Each segment requires downstream flow direction arrows, diameter/gradient
-;;; annotations, and Manhole Invert Level (IL) multileader callouts.
-;;;
-;;; SEWPIPEC automates the complete sewer reticulation drafting sequence:
-;;;   1. Prompts once per session for pipe attributes (Code, Size, Gradient).
-;;;   2. Interactively accepts consecutive link endpoints (P1 -> P2).
-;;;   3. Automatically subdivides long spans exceeding `maxSegM` (default 30m)
-;;;      into equal segments and places circular manholes at all junction nodes.
-;;;   4. Synthesizes 3-vertex polyline flow arrows centered on every pipe link.
-;;;   5. Generates professional multi-line MTEXT annotations with intelligent
-;;;      collision detection (placing text above or below to avoid clashes).
-;;;   6. Spawns Invert Level (IL) multileaders with true native AutoCAD MLEADER
-;;;      geometry matching standard Properties palette specifications:
-;;;        - Arrowhead size : 2000 mm
-;;;        - Landing length : 2000 mm
-;;;        - Landing gap    : 1000 mm
-;;;        - Justification  : Left or Right
-;;;   7. Prevents duplicate manholes and IL leaders at shared junction nodes.
-;;;   8. Localized Undo stack (`history` / `stepEnts`) supports step-by-step
-;;;      undo (typing 'U') without terminating the session.
+;;; SEWPIPEC automates the drafting of municipal gravity sewerage networks:
+;;;   1. Automatically inserts standard circular sewer manholes (R=750mm)
+;;;      at junction points and at regular intervals when spans exceed max limits.
+;;;   2. Auto-segments runs that exceed the maximum permissible span (default 100m).
+;;;   3. Generates 4-line parametric Sewer Manhole Multileader annotations
+;;;      (MH ID, Ground Level, Invert Level, Depth) using standard "750-T2" style.
+;;;   4. Draws centerline sewer pipe lines trimmed neatly to manhole boundaries.
+;;;   5. Generates directional flow arrows along the pipe run.
+;;;   6. Auto-calculates horizontal 2D span and formats pipe MTEXT annotations
+;;;      (Material, Diameter, Length, Gradient).
+;;;   7. Auto-increments Manhole IDs sequentially (e.g., MH-01 -> MH-02 -> MH-03).
+;;;   8. Provides complete live undo history (reverts geometry and ID sequence).
 ;;;
 ;;; DRAFTING WORKFLOW:
 ;;; --------------------------------------------------------------------------
-;;;  1. Type SEWPIPEC (or PIPEC) in the command line.
-;;;  2. Enter pipe Code (e.g. A01), Size (e.g. 600), Gradient (e.g. 1:100).
-;;;  3. Click initial Start Point (Manhole location).
-;;;  4. Click Next Point (Subsequent Manhole or discharge point).
-;;;  5. The pipe segment, intermediate manholes, flow arrows, pipe annotation,
-;;;     and IL multileaders are generated simultaneously.
-;;;  6. Continue clicking downstream points or type U to undo the last segment.
-;;;  7. Press Enter to finish.
-;;;
-;;; USER SETTINGS:
-;;; --------------------------------------------------------------------------
-;;;  - unitsPerM   : Drawing units per linear metre (default: 1000.0 = mm).
-;;;  - maxSegM     : Maximum pipe run before auto-manhole insertion (default: 30.0 m).
-;;;  - drainLayer  : Target layer for sewer linework (default: "#JRK - RD Drain Line").
-;;;  - drainColor  : ACI Color index for linework (default: 4 - Cyan).
-;;;  - drainWidth  : Polyline global width (default: 250.0 mm).
-;;;  - sumpLayer   : Target layer for manhole circles (default: "#JRK - RD Drain Manhole_Sump").
-;;;  - sumpRad     : Radius of circular manholes (default: 600.0 mm).
-;;;  - arrowLayer  : Target layer for flow arrows (default: "#JRK - RD Drain FLOW").
-;;;  - textLayer   : Target layer for pipe labels (default: "#JRK - RD Drain Text").
-;;;  - txtHgt      : Text height for annotations (default: 2000.0 mm).
-;;;  - mlLayer     : Target layer for IL Multileaders (default: "#JRK - RD Drain Text IL").
-;;;  - mlStyle     : Native Multileader style name (default: "1000-T2").
-;;;  - mlJustify   : Text justification ("Right" or "Left").
-;;;  - mlSide      : Leader orientation ("Right" = -90 deg / below, "Left" = +90 deg / above).
-;;;  - mlLeadLen   : Leader radial offset length from manhole rim (default: 3000.0 mm).
+;;;   1. Type `SEWPIPEC` in the AutoCAD / GstarCAD command line.
+;;;   2. Optionally configure Starting MH Code, Material (VCP), Size (225mm),
+;;;      and Gradient (1:100), or press Enter to accept defaults.
+;;;   3. Pick Start Point -> Pick End Point.
+;;;   4. System automatically splits pipe, inserts manholes, arrows, pipe labels,
+;;;      and parametric Multileaders, then prepares the next sequence ID.
+;;;   5. Type 'U' during prompt to undo the previous segment.
 ;;; ==========================================================================
-(defun c:pipec ( / *error* sysVars sysVals ucsSaved
+
+(defun c:sewpipec ( / *error* sysVars sysVals 
                    ;; --- settings ---
-                   drainLayer drainColor drainWidth arrowLayer arrowColor arrowWidth
+                   drainLayer drainColor arrowLayer arrowColor arrowWidth
                    sumpLayer sumpColor sumpRad textLayer textColor txtHgt txtStyle txtWidth
-                   mlLayer mlStyle mlText mlJustify mlSide mlLeadLen mlLandDist mlArrowSize mlLandGap
-                   ilMode unitsPerM maxSegM defCode defSize defGrad
+                   mlLayer mlStyle mlJustify mlSide mlLeadLen mlLandDist mlArrowSize mlLandGap
+                   ilMode unitsPerM maxSegM defMat defSize defGrad defMh pipeTextRot0
                    ;; --- working variables ---
-                   askInfo ans code size grad pt1 pt2 ang dist numSeg segDist i
+                   askInfo ans mat size grad currMh prevMh pt1 pt2 ang dist numSeg segDist i
                    sumpPt pA pB segMid segDistM linePt1 linePt2 arrowSize arrowP1 arrowP2
-                   txtAngRad pText str mtextStr distAbove distBelow pTextAbove pTextBelow
-                   blockedAbove blockedBelow history stepEnts loop sumpCache silCache c e
+                   txtAngRad finalTxtAng pText str mtextStr distAbove distBelow pTextAbove pTextBelow
+                   blockedAbove blockedBelow history stepEnts loop sumpCache silCache c e mlText
                    ;; --- local helper functions ---
-                   ensure-layer esc-filter pt2d near-p mk finish-cmd restore-ucs
+                   ensure-layer esc-filter pt2d near-p mk finish-cmd next-seq
                    scan-sumps scan-sils mlstyle-exists-p ensure-mlstyle text-blocked-p
                    make-il make-il-mleader make-il-basic)
 
   ;; =========================================================================
-  ;; USER SETTINGS
+  ;; 1. USER CONFIGURATION & LAYER STANDARDS (#JRK SEWER)
   ;; =========================================================================
-  (setq unitsPerM 1000.0)      ;; drawing units per metre (1000 = drawing in mm)
-  (setq maxSegM   30.0)        ;; max pipe run (m) before a sump is auto-inserted
+  (setq unitsPerM 1000.0)      ;; Drawing units per meter (1000 = Millimeters)
+  (setq maxSegM   100.0)       ;; Maximum span before auto-splitting into manholes
 
-  (setq drainLayer "#JRK - RD Drain Line")
-  (setq drainColor 4)
-  (setq drainWidth 250.0)
+  (setq drainLayer "#JRK - Sewer Line VCP")
+  (setq drainColor 4)          ;; Cyan
 
-  (setq arrowLayer "#JRK - RD Drain FLOW")
-  (setq arrowColor 4)
+  (setq arrowLayer "#JRK - Sewer FLOW")
+  (setq arrowColor 2)          ;; Yellow
   (setq arrowWidth 0.0)
 
-  (setq sumpLayer "#JRK - RD Drain Manhole_Sump")
-  (setq sumpColor 4)
-  (setq sumpRad 600.0)
+  (setq sumpLayer "#JRK - Sewer Manhole")
+  (setq sumpColor 6)           ;; Magenta
+  (setq sumpRad 750.0)         ;; Manhole chamber radius (mm)
 
-  (setq textLayer "#JRK - RD Drain Text")
-  (setq textColor 7)
-  (setq txtHgt 2000.0)
-  (setq txtStyle "1000-T2")
-  (setq txtWidth 0.5)
+  (setq textLayer "#JRK - Sewer Text")
+  (setq textColor 3)           ;; Green
+  (setq txtHgt 2500.0)         ;; Text height (mm)
+  (setq txtStyle "MH.IL")      ;; Text style
+  (setq txtWidth 1.0)          ;; Width factor
 
-  (setq mlLayer     "#JRK - RD Drain Text IL")
-  (setq mlStyle     "1000-T2")             ;; Multileader style (created automatically if missing)
-  (setq mlText      "{\\W0.5;SIL00.00}")   ;; Text content
-  (setq mlJustify   "Right")               ;; Text justification: "Right" (text left of landing) or "Left"
-  (setq mlSide      "Right")               ;; Leader offset side from pipe: "Right" (-90 deg, below) or "Left" (+90 deg, above)
-  (setq mlLeadLen   3000.0)                ;; Perpendicular leader length from sump rim (mm)
-  (setq mlLandDist  2000.0)                ;; Horizontal landing length (matches Properties: 2000.0)
-  (setq mlArrowSize 2000.0)                ;; Arrowhead size (matches Properties: 2000.0)
-  (setq mlLandGap   1000.0)                ;; Landing gap (matches Properties: 1000.0)
-  (setq ilMode      1)                     ;; 1 = MLEADER command (auto-fallback), 2 = LINE + MTEXT only
+  (setq mlLayer     "#JRK - Sewer Text")   ;; Multileader layer
+  (setq mlStyle     "750-T2")              ;; Multileader style name
+  (setq mlJustify   "Right")               ;; Text justification: "Left" or "Right"
+  (setq mlSide      "Right")               ;; Leader elbow side relative to pipe: "Left" or "Right"
+  (setq mlLeadLen   15000.0)               ;; Leader landing offset length (mm)
+  (setq mlLandDist  1000.0)                ;; Dogleg length (mm)
+  (setq mlArrowSize 1000.0)                ;; Arrowhead size (mm)
+  (setq mlLandGap   500.0)                 ;; Landing gap (mm)
+  (setq ilMode      1)                     ;; 1 = Native WCS MLEADER, 2 = Entity-make fallback
+  
+  (setq pipeTextRot0 nil)                  ;; T = Always horizontal text, nil = Follow pipe angle
 
-  (setq defCode "A01")
-  (setq defSize "600")
-  (setq defGrad "1:000")
+  (setq defMat  "VCP")
+  (setq defSize "225")
+  (setq defGrad "1:100")
+  (setq defMh   "MH-01")
+
   ;; =========================================================================
-
-  ;; ---- system variables saved here and restored on exit / ESC / error -----
-  (setq sysVars '("CMDECHO" "CMLEADERSTYLE")
+  ;; 2. SYSTEM ENVIRONMENT & ERROR TRAPPING
+  ;; =========================================================================
+  (setq sysVars '("CMDECHO" "CMLEADERSTYLE" "OSMODE")
         sysVals (mapcar 'getvar sysVars))
 
-  ;; ---- helpers ------------------------------------------------------------
-  ;; Create a layer via entmake (does NOT change the current layer)
   (defun ensure-layer (nm col)
     (if (not (tblsearch "LAYER" nm))
       (progn
         (entmake (list '(0 . "LAYER") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbLayerTableRecord")
                        (cons 2 nm) '(70 . 0) (cons 62 col) '(6 . "Continuous")))
-        (if (not (tblsearch "LAYER" nm))   ;; fallback if entmake of table records is blocked
+        (if (not (tblsearch "LAYER" nm))   
           (command "_.-LAYER" "_N" nm "_C" col nm "")))))
 
-  ;; Escape ssget wildcard characters (layer names like "#JRK" start with a wildcard!)
   (defun esc-filter (s / k ch out)
     (setq k 1 out "")
     (while (<= k (strlen s))
@@ -142,40 +113,49 @@
       (setq k (1+ k)))
     out)
 
-  ;; Flatten a point to Z = 0
   (defun pt2d (p) (list (car p) (cadr p) 0.0))
 
-  ;; T if any cached point lies within rad of pt (2D)
   (defun near-p (pt cache rad / found c)
     (foreach c cache (if (< (distance (pt2d pt) (pt2d c)) rad) (setq found T)))
     found)
 
-  ;; entmake + register the new entity for UNDO (only if entmake succeeded)
   (defun mk (data)
     (if (entmake data) (setq stepEnts (cons (entlast) stepEnts))))
 
-  ;; Politely finish any command left waiting for input
   (defun finish-cmd ()
     (repeat 5 (if (> (getvar "CMDACTIVE") 0) (command "")))
     (if (> (getvar "CMDACTIVE") 0) (command)))
 
-  ;; Put the UCS back exactly as the user had it
-  (defun restore-ucs ()
-    (if ucsSaved
+  ;; Helper: Auto-Increments ID (Handles both Numbers like MH-01 and Letters)
+  (defun next-seq (str / len lastChar asciiVal i numStr preStr val pad s)
+    (setq len (strlen str))
+    (if (> len 0)
       (progn
-        (command "_.UCS" "_W")
+        (setq lastChar (substr str len 1)
+              asciiVal (ascii lastChar))
         (cond
-          ((/= (car ucsSaved) "") (command "_.UCS" "_R" (car ucsSaved)))
-          ((not (and (equal (cadr ucsSaved) '(0.0 0.0 0.0) 1e-9)
-                     (equal (caddr ucsSaved) '(1.0 0.0 0.0) 1e-9)
-                     (equal (cadddr ucsSaved) '(0.0 1.0 0.0) 1e-9)))
-           (command "_.UCS" "_3"
-                    (cadr ucsSaved)
-                    (mapcar '+ (cadr ucsSaved) (caddr ucsSaved))
-                    (mapcar '+ (cadr ucsSaved) (cadddr ucsSaved)))))
-        (setq ucsSaved nil))))
+          ;; Ends in a letter A-Y or a-y (e.g. "MH-1A" -> "MH-1B")
+          ((or (and (>= asciiVal 65) (< asciiVal 90)) (and (>= asciiVal 97) (< asciiVal 122)))
+           (strcat (substr str 1 (1- len)) (chr (1+ asciiVal))))
+          ;; Wrap Z to A
+          ((= asciiVal 90) (strcat (substr str 1 (1- len)) "A"))
+          ((= asciiVal 122) (strcat (substr str 1 (1- len)) "a"))
+          ;; Ends in a number (e.g. "MH-01" -> "MH-02")
+          ((and (>= asciiVal 48) (<= asciiVal 57))
+           (setq i len numStr "")
+           (while (and (> i 0) (>= (ascii (substr str i 1)) 48) (<= (ascii (substr str i 1)) 57))
+             (setq numStr (strcat (substr str i 1) numStr) i (1- i)))
+           (setq preStr (substr str 1 i) val (1+ (atoi numStr)) pad (strlen numStr) s (itoa val))
+           (while (< (strlen s) pad) (setq s (strcat "0" s)))
+           (strcat preStr s))
+          ;; Fallback
+          (T str)
+        )
+      )
+      ""
+    )
+  )
 
-  ;; Existing manhole/sump circle centres (scanned ONCE, then cached)
   (defun scan-sumps ( / ss n pts)
     (setq ss (ssget "_X" (list '(0 . "CIRCLE") (cons 8 (esc-filter sumpLayer)) (cons 410 (getvar "CTAB")))))
     (if ss
@@ -185,17 +165,17 @@
           (setq n (1+ n)))))
     pts)
 
-  ;; Positions of existing "SIL" labels (TEXT / MTEXT / MULTILEADER) - scanned ONCE
   (defun scan-sils ( / ss n ed typ found d pts)
     (setq ss (ssget "_X" (list '(0 . "TEXT,MTEXT,MULTILEADER") (cons 410 (getvar "CTAB")))))
     (if ss
       (progn (setq n 0)
         (while (< n (sslength ss))
           (setq ed (entget (ssname ss n)) typ (cdr (assoc 0 ed)) found nil)
-          ;; groups 1 / 3 = TEXT-MTEXT strings, 304 = MULTILEADER content
           (foreach d ed
             (if (and (member (car d) '(1 3 304)) (= (type (cdr d)) 'STR)
-                     (wcmatch (strcase (cdr d)) "*SIL*"))
+                     (or (wcmatch (strcase (cdr d)) "*MH*")
+                         (wcmatch (strcase (cdr d)) "*IL*")
+                         (wcmatch (strcase (cdr d)) "*GL*")))
               (setq found T)))
           (if found
             (if (= typ "MULTILEADER")
@@ -206,12 +186,10 @@
           (setq n (1+ n)))))
     pts)
 
-  ;; Does the multileader style exist? (checked via dictionaries - no vla)
   (defun mlstyle-exists-p (nm / d)
     (setq d (dictsearch (namedobjdict) "ACAD_MLEADERSTYLE"))
     (if (and d (dictsearch (cdr (assoc -1 d)) nm)) T nil))
 
-  ;; Ensure the Multileader Style exists; if not, create/configure it with exact specifications
   (defun ensure-mlstyle (nm / dict mlStyles styleObj)
     (vl-load-com)
     (if (and (vl-symbol-value 'vla-get-ActiveDocument)
@@ -226,8 +204,8 @@
              (progn
                (if (vlax-property-available-p styleObj 'TextHeight T)
                  (vlax-put-property styleObj 'TextHeight txtHgt))
-               (if (vlax-property-available-p styleObj 'ArrowSize T)
-                 (vlax-put-property styleObj 'ArrowSize mlArrowSize))
+               (if (vlax-property-available-p styleObj 'ArrowheadSize T)
+                 (vlax-put-property styleObj 'ArrowheadSize mlArrowSize))
                (if (vlax-property-available-p styleObj 'LandingDistance T)
                  (vlax-put-property styleObj 'LandingDistance mlLandDist))
                (if (vlax-property-available-p styleObj 'LandingGap T)
@@ -240,7 +218,6 @@
                  (if (vlax-property-available-p styleObj 'TextStyleName T)
                    (vlax-put-property styleObj 'TextStyleName txtStyle)))))))))
 
-  ;; Any TEXT/MTEXT crossing a square (2*txtHgt) around pt? (crossing polygon = UCS safe)
   (defun text-blocked-p (pt / h ss)
     (setq h (* txtHgt 2.0))
     (setq ss (ssget "_CP"
@@ -251,55 +228,36 @@
                     '((0 . "TEXT,MTEXT"))))
     (if ss T nil))
 
-  ;; SIL label as a real MLEADER (rotated UCS so text follows the pipe). Returns T on success.
-  (defun make-il-mleader (sPt / last0 newEnt ed ok perpAng arrowPt cornerPt p1_ucs p2_ucs dx obj)
+  ;; -------------------------------------------------------------------------
+  ;; NATIVE WCS MLEADER GENERATION
+  ;; -------------------------------------------------------------------------
+  (defun make-il-mleader (sPt / last0 newEnt ed ok perpAng arrowPt cornerPt dx p2_wcs obj)
     (setq last0 (entlast) ok nil)
     (ensure-mlstyle mlStyle)
     (if (mlstyle-exists-p mlStyle)
       (vl-catch-all-apply 'setvar (list "CMLEADERSTYLE" mlStyle)))
 
-    ;; 1. Calculate perpendicular leader angle (relative to readable text angle)
     (setq perpAng (if (= (strcase mlSide) "RIGHT")
                     (- txtAngRad (/ pi 2.0))
                     (+ txtAngRad (/ pi 2.0))))
 
-    ;; 2. Arrowhead point at sump edge
     (setq arrowPt (polar sPt perpAng sumpRad))
-
-    ;; 3. Corner point (landing junction) offset perpendicularly from arrowhead
     (setq cornerPt (polar arrowPt perpAng mlLeadLen))
 
-    ;; 4. Rotate UCS around Z by txtAngRad so X-axis follows the pipe line
-    (setq ucsSaved (list (getvar "UCSNAME") (getvar "UCSORG") (getvar "UCSXDIR") (getvar "UCSYDIR")))
-    (command "_.UCS" "_W")
-    (command "_.UCS" "_Z" (* 180.0 (/ txtAngRad pi)))
-
-    ;; 5. Transform points to active UCS
-    (setq p1_ucs (trans arrowPt 0 1))
-    (setq p2_ucs (trans cornerPt 0 1))
-
-    ;; 6. Control landing direction & justification:
-    ;; If mlJustify is "Right": landing extends to the LEFT (-X in UCS), text is Right-justified.
-    ;; If mlJustify is "Left": landing extends to the RIGHT (+X in UCS), text is Left-justified.
     (setq dx (if (= (strcase mlJustify) "LEFT") 10.0 -10.0))
-    (setq p2_ucs (list (+ (car p2_ucs) dx) (cadr p2_ucs) 0.0))
+    (setq p2_wcs (list (+ (car cornerPt) dx) (cadr cornerPt) 0.0))
 
-    ;; 7. Run MLEADER command with double Enter to close text entry
     (setvar "CLAYER" mlLayer)
-    (command "_.MLEADER" "_NON" p1_ucs "_NON" p2_ucs mlText "")
+    (command "_.MLEADER" "_NON" arrowPt "_NON" p2_wcs mlText "")
     (while (> (getvar "CMDACTIVE") 0) (command ""))
-    (restore-ucs)
 
-    ;; 8. Post-process created multileader to harden every property
     (setq newEnt (entlast))
     (if (and newEnt (not (equal newEnt last0)))
       (progn
         (setq ed (entget newEnt))
         (if (= (cdr (assoc 0 ed)) "MULTILEADER")
           (progn
-            ;; Enforce target layer via entmod
             (entmod (subst (cons 8 mlLayer) (assoc 8 ed) ed))
-            ;; Enforce every property via VLA to match the exact properties palette
             (vl-catch-all-apply
               '(lambda ()
                  (setq obj (vlax-ename->vla-object newEnt))
@@ -321,15 +279,12 @@
                    (vlax-put-property obj 'TextRightAttachmentType 1))
                  (if (vlax-property-available-p obj 'TextJustify T)
                    (vlax-put-property obj 'TextJustify (if (= (strcase mlJustify) "LEFT") 1 3)))
-                 (if (vlax-property-available-p obj 'TextRotation T)
-                   (vlax-put-property obj 'TextRotation (+ txtAngRad (/ pi 2.0))))
                  (if (vlax-property-available-p obj 'ScaleFactor T)
                    (vlax-put-property obj 'ScaleFactor 1.0))
                  (vla-update obj)))
             (setq stepEnts (cons newEnt stepEnts) ok T)))))
     ok)
 
-  ;; Fallback SIL label: plain LINE + MTEXT (universal fallback)
   (defun make-il-basic (sPt / perpAng arrowPt cornerPt landPt txtPt jCode aP1 aP2 rotAng)
     (setq perpAng (if (= (strcase mlSide) "RIGHT")
                     (- txtAngRad (/ pi 2.0))
@@ -337,10 +292,8 @@
     (setq arrowPt  (polar sPt perpAng sumpRad)
           cornerPt (polar arrowPt perpAng mlLeadLen))
 
-    ;; Leader line
     (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 arrowPt) (cons 11 cornerPt)))
 
-    ;; Arrowhead (solid polyline wedge pointing toward sump)
     (setq aP1 (polar arrowPt (+ perpAng (* pi 0.85)) (* mlArrowSize 0.4))
           aP2 (polar arrowPt (- perpAng (* pi 0.85)) (* mlArrowSize 0.4)))
     (mk (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 mlLayer)
@@ -349,25 +302,22 @@
               (list 10 (car aP1) (cadr aP1))
               (list 10 (car aP2) (cadr aP2))))
 
-    ;; Horizontal landing line and MText position
-    (setq rotAng (+ txtAngRad (/ pi 2.0)))
+    (setq rotAng 0.0)
     (if (= (strcase mlJustify) "LEFT")
       (progn
-        ;; Text on Right of landing (Left justified)
-        (setq landPt (polar cornerPt txtAngRad mlLandDist)
-              txtPt  (polar landPt txtAngRad mlLandGap)
-              jCode  1)) ;; Top-Left
+        (setq landPt (polar cornerPt 0.0 mlLandDist)
+              txtPt  (polar landPt 0.0 mlLandGap)
+              jCode  1)) 
       (progn
-        ;; Text on Left of landing (Right justified)
-        (setq landPt (polar cornerPt (+ txtAngRad pi) mlLandDist)
-              txtPt  (polar landPt (+ txtAngRad pi) mlLandGap)
-              jCode  3))) ;; Top-Right
+        (setq landPt (polar cornerPt pi mlLandDist)
+              txtPt  (polar landPt pi mlLandGap)
+              jCode  3))) 
 
     (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 cornerPt) (cons 11 landPt)))
     (mk (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 mlLayer) '(100 . "AcDbMText")
               (list 10 (car txtPt) (cadr txtPt) 0.0)
               (cons 40 txtHgt) (cons 41 0.0)
-              (cons 71 jCode) '(72 . 1) (cons 7 txtStyle) (cons 50 rotAng)
+              (cons 71 jCode) '(72 . 1) (cons 7 mlStyle) (cons 50 rotAng)
               (list 11 (cos rotAng) (sin rotAng) 0.0)
               (cons 1 mlText))))
 
@@ -376,16 +326,16 @@
     (if (= ilMode 1) (setq ok (make-il-mleader sPt)))
     (if (not ok) (make-il-basic sPt)))
 
-  ;; ---- error handler: cancels pending command, restores UCS + sysvars -----
   (defun *error* (msg)
     (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
-    (if ucsSaved (restore-ucs))
     (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
       (princ (strcat "\nAction Cancelled: " msg)))
     (princ))
 
-  ;; ---- setup --------------------------------------------------------------
+  ;; =========================================================================
+  ;; 3. SYSTEM INITIALIZATION & USER INPUT
+  ;; =========================================================================
   (setvar "CMDECHO" 0)
   (ensure-layer drainLayer drainColor)
   (ensure-layer arrowLayer arrowColor)
@@ -399,57 +349,61 @@
                    '(71 . 0) '(3 . "romans.shx") '(4 . ""))))
 
   (initget "Yes No")
-  (setq askInfo (getkword "\nEnter custom drain details? [Yes/No] <No>: "))
-  (setq code defCode size defSize grad defGrad)
+  (setq askInfo (getkword "\nEnter custom sewer details? [Yes/No] <No>: "))
+  (setq currMh defMh mat defMat size defSize grad defGrad)
   (if (= askInfo "Yes")
     (progn
-      (setq code (getstring T (strcat "\nCode <" defCode ">: ")))     (if (= code "") (setq code defCode))
-      (setq size (getstring T (strcat "\nSize <" defSize ">: ")))     (if (= size "") (setq size defSize))
-      (setq grad (getstring T (strcat "\nGradient <" defGrad ">: "))) (if (= grad "") (setq grad defGrad))
+      (setq currMh (getstring T (strcat "\nStarting Manhole Code <" defMh ">: "))) (if (= currMh "") (setq currMh defMh))
+      (setq mat    (getstring T (strcat "\nPipe Material <" defMat ">: ")))           (if (= mat "") (setq mat defMat))
+      (setq size   (getstring T (strcat "\nPipe Size <" defSize ">: ")))               (if (= size "") (setq size defSize))
+      (setq grad   (getstring T (strcat "\nGradient <" defGrad ">: ")))                 (if (= grad "") (setq grad defGrad))
       (initget "Left Right")
-      (setq ans (getkword (strcat "\nSIL Text Justification [Left/Right] <" mlJustify ">: ")))
+      (setq ans (getkword (strcat "\nManhole Text Justification [Left/Right] <" mlJustify ">: ")))
       (if ans (setq mlJustify ans))
       (initget "Left Right")
-      (setq ans (getkword (strcat "\nSIL Leader Offset Side [Left/Right] <" mlSide ">: ")))
+      (setq ans (getkword (strcat "\nLeader Offset Side [Left/Right] <" mlSide ">: ")))
       (if ans (setq mlSide ans))))
 
-  ;; one-off scans of what is already drawn (fast in heavy drawings)
   (setq sumpCache (scan-sumps) silCache (scan-sils))
-
   (setq history nil loop T)
 
-  ;; ---- main loop ----------------------------------------------------------
+  ;; =========================================================================
+  ;; 4. MAIN INTERACTIVE GENERATION LOOP
+  ;; =========================================================================
   (while loop
     (initget "Side Justify Undo")
-    (setq pt1 (getpoint (strcat "\nClick Start Point of Drain [Side/Justify/Undo] <Exit> (Side:" mlSide ", Justify:" mlJustify "): ")))
+    (setq pt1 (getpoint (strcat "\nClick Start Point of Sewer [Side/Justify/Undo] <Exit> (Side:" mlSide ", Justify:" mlJustify "): ")))
     (cond
       ((null pt1) (setq loop nil))
 
       ((= pt1 "Justify")
        (setq mlJustify (if (= (strcase mlJustify) "RIGHT") "Left" "Right"))
-       (princ (strcat "\n>> SIL Text Justification set to: " mlJustify)))
+       (princ (strcat "\n>> Manhole Text Justification set to: " mlJustify)))
 
       ((= pt1 "Side")
        (setq mlSide (if (= (strcase mlSide) "LEFT") "Right" "Left"))
-       (princ (strcat "\n>> SIL Leader Offset Side set to: " mlSide)))
+       (princ (strcat "\n>> Leader Offset Side set to: " mlSide)))
 
       ((= pt1 "Undo")
        (if history
          (progn
-           (foreach e (car history) (if (and e (entget e)) (entdel e)))
-           (setq history   (cdr history)
+           (setq lastStep (car history))
+           (foreach e (car lastStep) (if (and e (entget e)) (entdel e)))
+           (setq currMh    (cdr lastStep) 
+                 history   (cdr history)
                  sumpCache (scan-sumps)
                  silCache  (scan-sils))
-           (princ "\n>> Last drain segment undone."))
+           (princ (strcat "\n>> Last sewer segment undone. Sequence reverted to " currMh ".")))
          (princ "\n>> Nothing to undo.")))
 
       (T
        (initget "Undo")
-       (setq pt2 (getpoint pt1 "\nClick End Point of Drain [Undo] <Cancel>: "))
+       (setq pt2 (getpoint pt1 "\nClick End Point of Sewer [Undo] <Cancel>: "))
        (if (or (null pt2) (= pt2 "Undo"))
          (princ "\n>> Cancelled point.")
          (progn
            (setq stepEnts nil
+                 prevMh currMh 
                  pt1  (pt2d (trans pt1 1 0))
                  pt2  (pt2d (trans pt2 1 0))
                  dist (distance pt1 pt2))
@@ -458,13 +412,13 @@
              (progn
                (setq ang       (angle pt1 pt2)
                      arrowSize (* txtHgt 0.8)
-                     ;; keep text readable (never upside-down)
                      txtAngRad (if (and (> ang (+ (/ pi 2.0) 1e-9)) (<= ang (+ (* 1.5 pi) 1e-9))) (- ang pi) ang)
+                     finalTxtAng (if pipeTextRot0 0.0 txtAngRad) 
                      numSeg    (max 1 (fix (+ (/ dist (* maxSegM unitsPerM)) 0.9999)))
                      segDist   (/ dist numSeg)
                      i 0)
 
-               ;; sumps + SIL labels at every run point (skip those that already exist)
+               ;; Manholes & 4-line Multileaders at every node
                (while (<= i numSeg)
                  (setq sumpPt (polar pt1 ang (* i segDist)))
                  (if (not (near-p sumpPt sumpCache 100.0))
@@ -473,11 +427,13 @@
                      (setq sumpCache (cons sumpPt sumpCache))))
                  (if (not (near-p sumpPt silCache 1500.0))
                    (progn
+                     (setq mlText (strcat currMh "\\PGL: 00.00m\\PIL: 00.00m\\PDEPTH: 0.00m"))
                      (make-il sumpPt)
-                     (setq silCache (cons sumpPt silCache))))
+                     (setq silCache (cons sumpPt silCache))
+                     (setq currMh (next-seq currMh))))
                  (setq i (1+ i)))
 
-               ;; pipe segments, flow arrows and labels
+               ;; Pipe centerline segments & Flow arrows
                (setq i 0)
                (while (< i numSeg)
                  (setq pA (polar pt1 ang (* i segDist))
@@ -487,10 +443,9 @@
                        linePt1 (polar pA ang sumpRad)
                        linePt2 (polar pB (+ ang pi) sumpRad))
 
-                 (mk (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 drainLayer)
-                           '(100 . "AcDbPolyline") '(90 . 2) '(70 . 0) (cons 43 drainWidth)
-                           (list 10 (car linePt1) (cadr linePt1))
-                           (list 10 (car linePt2) (cadr linePt2))))
+                 (mk (list '(0 . "LINE") (cons 8 drainLayer)
+                           (list 10 (car linePt1) (cadr linePt1) 0.0)
+                           (list 11 (car linePt2) (cadr linePt2) 0.0)))
 
                  (setq arrowP1 (polar segMid (+ ang (* pi 0.85)) arrowSize)
                        arrowP2 (polar segMid (- ang (* pi 0.85)) arrowSize))
@@ -500,20 +455,10 @@
                            (list 10 (car segMid) (cadr segMid))
                            (list 10 (car arrowP2) (cadr arrowP2))))
 
-                 ;; label layout depends on how long the segment is
-                 (cond
-                   ((<= segDistM 6)
-                    (setq str (strcat code ";\\P" size "%%c\\P" (itoa segDistM) "m\\P" grad)
-                          distAbove (* txtHgt 0.25)
-                          distBelow (* txtHgt 3.5)))
-                   ((<= segDistM 14)
-                    (setq str (strcat code "; " size "%%c\\P" (itoa segDistM) "m " grad)
-                          distAbove (* txtHgt 0.25)
-                          distBelow (* txtHgt 1.8)))
-                   (T
-                    (setq str (strcat code "; " size "%%c " (itoa segDistM) "m " grad)
-                          distAbove (* txtHgt 0.25)
-                          distBelow (* txtHgt 1.25))))
+                 ;; Dynamic Sewer Pipe Label: Material + Dia + Length + Gradient
+                 (setq str (strcat mat " " size "%%c\\P" (itoa segDistM) "m " grad)
+                       distAbove (* txtHgt 0.25)
+                       distBelow (* txtHgt 1.8))
 
                  (setq pTextAbove (polar segMid (+ txtAngRad (/ pi 2.0)) distAbove)
                        pTextBelow (polar segMid (- txtAngRad (/ pi 2.0)) distBelow)
@@ -526,21 +471,17 @@
                            (list 10 (car pText) (cadr pText) 0.0)
                            (cons 40 txtHgt) (cons 41 0.0) '(71 . 8) '(72 . 1)
                            (cons 1 mtextStr) (cons 7 txtStyle)
-                           (cons 50 txtAngRad) (list 11 (cos txtAngRad) (sin txtAngRad) 0.0)
+                           (cons 50 finalTxtAng) (list 11 (cos finalTxtAng) (sin finalTxtAng) 0.0)
                            '(73 . 1) '(44 . 0.8)))
+                 
                  (setq i (1+ i)))
 
-               (setq history (cons stepEnts history))
+               (setq history (cons (cons stepEnts prevMh) history))
                (if (> numSeg 1)
-                 (princ (strcat "\nSuccess! Auto-split into " (itoa numSeg) " segments."))
-                 (princ "\nSuccess! Pipe generated."))))))))
+                 (princ (strcat "\nSuccess! Auto-split into " (itoa numSeg) " sewer segments."))
+                 (princ "\nSuccess! Sewer network generated."))))))))
   )
 
-  ;; ---- normal exit: restore sysvars --------------------------------------
   (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
   (princ)
 )
-
-;; Alias SEWPIPEC to execute the pipeline engine
-(defun c:sewpipec () (c:pipec))
-

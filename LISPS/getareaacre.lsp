@@ -1,3 +1,33 @@
+;;; ==========================================================================
+;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
+;;; MODULE      : getareaacre.lsp
+;;; COMMAND     : GETAREAACRE
+;;; DESCRIPTION : Dedicated Polyline Area Extraction in Acres (ac) with
+;;;               Centroid Text Annotation & Windows Clipboard Sync
+;;; AUTHOR      : Professional Infrastructure CAD Automation
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
+;;; ==========================================================================
+;;;
+;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
+;;; --------------------------------------------------------------------------
+;;; In master planning, agricultural zoning, and land acquisition surveys,
+;;; parcel areas are standardized in imperial Acres.
+;;;
+;;; GETAREAACRE provides instantaneous Acre extraction:
+;;;   1. Prompts the drafter to select any polyline boundary.
+;;;   2. Queries native object area in square millimeters.
+;;;   3. Converts to Acres using standard geodetic conversion (4046856422.4 mm2/ac).
+;;;   4. Places a centered text entity directly at the polyline geometric center
+;;;      formatted with 4 decimal places and "ac" suffix.
+;;;   5. Pipes the numerical Acre value directly to the Windows Clipboard.
+;;;
+;;; DRAFTING WORKFLOW:
+;;; --------------------------------------------------------------------------
+;;;   1. Type `GETAREAACRE` in the CAD command line.
+;;;   2. Click any closed polyline.
+;;;   3. Centroid text label is placed automatically, and result is copied to clipboard.
+;;; ==========================================================================
+
 (defun c:getareaacre ( / ss ent rawArea acreArea outText center oldCmd )
   
   ;; =========================================================================
