@@ -630,15 +630,53 @@
       }, [processedRows]);
 
       // ─────────────────────────────────────────────────────────────
-      // CSV EXPORT ENGINE (Exactly 2 columns, NO headers)
+      // RAW DATA CSV EXPORT ENGINE (For Smart Injection)
       // ─────────────────────────────────────────────────────────────
       const exportCSV = () => {
         if (processedRows.length === 0) {
-          alert('No data to export. Please upload an Excel file or load demo data first.');
-          return;
+          alert('No data to export.'); return;
         }
 
-        // Exactly 2 columns: Column 1 = ID, Column 2 = CAD_String
+        // Export 5 Columns: ID, Size/GL, Length/IL, Gradient/Depth, Category
+        const csvLines = processedRows.map(item => {
+          const id = escapeCSV(item.id);
+          const category = escapeCSV(item.category);
+          
+          let val1, val2, val3;
+          if (item.category === 'SEWERAGE') {
+            val1 = escapeCSV(item.sewerDetails.gl || '00.00');
+            val2 = escapeCSV(item.sewerDetails.il || '00.00');
+            val3 = escapeCSV(item.sewerDetails.depth || '00.00');
+          } else {
+            val1 = escapeCSV(item.drainDetails.size || '600');
+            val2 = escapeCSV(item.drainDetails.length || '0');
+            val3 = escapeCSV(item.drainDetails.gradient || '1000');
+          }
+          
+          return `${id},${val1},${val2},${val3},${category}`;
+        });
+
+        const csvContent = csvLines.join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'AutoCAD_Smart_Raw.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast('Exported "AutoCAD_Smart_Raw.csv" (5-column format) successfully!');
+      };
+
+      // ─────────────────────────────────────────────────────────────
+      // 2-COLUMN MTEXT CSV EXPORT ENGINE (For CSVUPDATE Placeholders)
+      // ─────────────────────────────────────────────────────────────
+      const exportMtextCSV = () => {
+        if (processedRows.length === 0) {
+          alert('No data to export.'); return;
+        }
+
         const csvLines = processedRows.map(item => {
           const col1 = escapeCSV(item.id);
           const col2 = escapeCSV(item.cadString);
@@ -655,8 +693,7 @@
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-
-        showToast('Exported "AutoCAD_Smart_Import.csv" successfully!');
+        showToast('Exported "AutoCAD_Smart_Import.csv" (2-column MTEXT) successfully!');
       };
 
       // Copy whole CSV to clipboard
@@ -1384,12 +1421,29 @@
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span>
                   {processedRows.length > 0
-                    ? `Ready to export ${processedRows.length} CAD MTEXT strings (2-column format)`
+                    ? `Ready to export ${processedRows.length} items (Raw 5-Column & MTEXT 2-Column available)`
                     : 'Awaiting spreadsheet upload or sample selection'}
                 </span>
               </div>
 
-              <div className="flex items-center space-x-3 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={exportMtextCSV}
+                  disabled={processedRows.length === 0}
+                  className={`inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl font-medium text-xs tracking-wide transition border ${
+                    processedRows.length > 0
+                      ? 'border-cadslate-700 bg-cadslate-800 hover:bg-cadslate-750 text-slate-300 hover:text-white cursor-pointer'
+                      : 'border-cadslate-800 bg-cadslate-900 text-slate-600 cursor-not-allowed'
+                  }`}
+                  title="Export 2-column MTEXT CSV for standard CSVUPDATE.lsp placeholder replacement"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span>Export 2-Col MTEXT (.CSV)</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={exportCSV}
@@ -1399,11 +1453,12 @@
                       ? 'bg-gradient-to-r from-cadcyan-500 to-cadcyan-600 hover:from-cadcyan-400 hover:to-cadcyan-500 text-cadslate-950 shadow-cadcyan-500/20 cursor-pointer scale-100 hover:scale-[1.02]'
                       : 'bg-cadslate-800 text-slate-500 cursor-not-allowed'
                   }`}
+                  title="Export 5-column raw engineering parameters for Smart Injection"
                 >
                   <svg className="w-5 h-5 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  <span>Export CAD .CSV (AutoCAD_Smart_Import.csv)</span>
+                  <span>Export Smart Raw .CSV (5-Column)</span>
                 </button>
               </div>
             </div>
