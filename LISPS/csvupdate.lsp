@@ -4,7 +4,8 @@
                        dict refSel refEnt refLayer ss count i ent elist entType
                        oldTxt parsed stylePrefix displayId closeBraces cleanId match
                        updated missing skipped dataList glStr ilStr dStr
-                       szStr lenStr gradStr lenNum newTxt pt hgt gap p1 p2 p3 p4)
+                       szStr lenStr gradStr lenNum newTxt pt hgt gap p1 p2 p3 p4 errorPt
+                       minPt maxPt pMin pMax pad centerPt)
   (vl-load-com)
   
   ;; Save system variables
@@ -22,7 +23,7 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 1. ESCAPE WILDCARDS (Critical for layers starting with "#JRK")
+  ;; 1. ESCAPE WILDCARDS
   ;; -------------------------------------------------------------------------
   (defun esc-wildcard (s / k ch out)
     (setq k 1 out "")
@@ -38,7 +39,7 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 2. SAFE CSV LINE SPLITTER (Never crashes on blank lines)
+  ;; 2. SAFE CSV LINE SPLITTER
   ;; -------------------------------------------------------------------------
   (defun split-csv (str / lst pos)
     (setq lst nil)
@@ -51,7 +52,7 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 3. ULTRA-FUZZY ID NORMALIZER ("MH 58", "MH-58", "058", "58" -> "58")
+  ;; 3. ULTRA-FUZZY ID NORMALIZER
   ;; -------------------------------------------------------------------------
   (defun normalize-id (s / k ch asciiVal out)
     (setq k 1 out "")
@@ -74,7 +75,7 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 4. SMART MTEXT PARSER (Preserves {\fSwis721...; and {\W0.5; prefixes)
+  ;; 4. SMART MTEXT PARSER
   ;; -------------------------------------------------------------------------
   (defun split-mtext (txt / len i braceCnt loopP ch two semi stylePrefix remTxt endPos p displayId closeBraces)
     (setq len (strlen txt) i 1 braceCnt 0 loopP T)
@@ -198,9 +199,8 @@
   ;; =========================================================================
   (if ss
     (progn
-      (setq count (sslength ss) i 0 updated 0 missing 0 skipped 0)
+      (setq count (sslength ss) i 0 updated 0 missing 0 skipped 0 errorPt nil)
       
-      ;; Force DIMZIN to 0 to strictly enforce trailing zeros on 2 decimal formatting
       (setvar "DIMZIN" 0) 
       
       (while (< i count)
@@ -213,7 +213,8 @@
               stylePrefix (nth 0 parsed)
               displayId   (nth 1 parsed)
               closeBraces (nth 2 parsed)
-              cleanId     (normalize-id displayId))
+              cleanId     (normalize-id displayId)
+              obj         (vlax-ename->vla-object ent))
 
         (if (and (= csvMode "SEWERAGE") (not (is-sewer-mh-p oldTxt displayId)))
           (setq skipped (1+ skipped))
@@ -229,7 +230,6 @@
 
                 (if (= category "SEWERAGE")
                   (progn
-                    ;; Formats numbers to exactly 2 decimals (DIMZIN guarantees the trailing zeros)
                     (setq glStr (rtos (atof val1) 2 2)
                           ilStr (rtos (atof val2) 2 2)
                           dStr  (rtos (atof val3) 2 2))
@@ -255,14 +255,42 @@
                 (setq updated (1+ updated))
               )
               (progn
-                ;; Red Box for missing IDs
-                (setq pt (cdr (assoc 10 elist)))
-                (setq hgt (cdr (assoc 40 elist)))
-                (setq gap (if (and hgt (> hgt 0.0)) (* hgt 1.2) 1500.0))
-                (setq p1 (list (- (car pt) gap) (- (cadr pt) gap) 0.0)
-                      p2 (list (+ (car pt) (* gap 3.5)) (- (cadr pt) gap) 0.0)
-                      p3 (list (+ (car pt) (* gap 3.5)) (+ (cadr pt) gap) 0.0)
-                      p4 (list (- (car pt) gap) (+ (cadr pt) gap) 0.0))
+                ;; -----------------------------------------------------------------
+                ;; PERFECT BOUNDING BOX QA/QC ERROR HIGHLIGHTER
+                ;; -----------------------------------------------------------------
+                (setq minPt nil maxPt nil pMin nil pMax nil)
+                
+                ;; Attempt to get exact geometric boundaries of the text
+                (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vla-GetBoundingBox (list obj 'minPt 'maxPt))))
+                  (progn
+                    (setq pMin (vlax-safearray->list minPt)
+                          pMax (vlax-safearray->list maxPt)
+                          hgt  (if (cdr (assoc 40 elist)) (cdr (assoc 40 elist)) 1000.0)
+                          pad  (* hgt 0.15)) ;; 15% padding around exact text size
+                    
+                    (setq p1 (list (- (car pMin) pad) (- (cadr pMin) pad) 0.0)
+                          p2 (list (+ (car pMax) pad) (- (cadr pMin) pad) 0.0)
+                          p3 (list (+ (car pMax) pad) (+ (cadr pMax) pad) 0.0)
+                          p4 (list (- (car pMin) pad) (+ (cadr pMax) pad) 0.0))
+                          
+                    ;; Set exact center of the error for camera pan
+                    (if (null errorPt) 
+                      (setq errorPt (list (/ (+ (car pMin) (car pMax)) 2.0) (/ (+ (cadr pMin) (cadr pMax)) 2.0) 0.0))
+                    )
+                  )
+                  (progn
+                    ;; Fallback if Bounding Box fails (e.g. empty objects)
+                    (setq pt (cdr (assoc 10 elist)) 
+                          hgt (if (cdr (assoc 40 elist)) (cdr (assoc 40 elist)) 1000.0) 
+                          gap (* hgt 1.5))
+                    (setq p1 (list (- (car pt) gap) (- (cadr pt) gap) 0.0)
+                          p2 (list (+ (car pt) (* gap 3.5)) (- (cadr pt) gap) 0.0)
+                          p3 (list (+ (car pt) (* gap 3.5)) (+ (cadr pt) gap) 0.0)
+                          p4 (list (- (car pt) gap) (+ (cadr pt) gap) 0.0))
+                    (if (null errorPt) (setq errorPt pt))
+                  )
+                )
+
                 (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") '(100 . "AcDbPolyline")
                                (cons 8 refLayer) (cons 62 1) '(90 . 4) '(70 . 1) (cons 43 50.0)
                                (list 10 (car p1) (cadr p1)) (list 10 (car p2) (cadr p2))
@@ -275,17 +303,25 @@
         (setq i (1+ i))
       )
       
+      (if (and (= missing 1) errorPt)
+        (progn
+          (setvar "CMDECHO" 1)
+          (command "_.ZOOM" "_C" errorPt "")
+          (setvar "CMDECHO" 0)
+        )
+      )
+      
       (alert (strcat "CSV DATA INJECTION COMPLETE\n\n"
                      "Target Layer: " refLayer "\n"
                      "Mode: " csvMode "\n\n"
                      "Texts Updated: " (itoa updated) "\n"
                      "Missing from CSV (Red Boxed): " (itoa missing)
-                     (if (> skipped 0) (strcat "\nNon-Manhole Texts Skipped: " (itoa skipped)) "")))
+                     (if (> skipped 0) (strcat "\nNon-Manhole Texts Skipped: " (itoa skipped)) "")
+                     (if (and (= missing 1) errorPt) "\n\nCamera automatically panned to the error location." "")))
     )
     (alert (strcat "No text objects found on layer: " refLayer))
   )
 
-  ;; Restore system variables
   (if oldDimZin (setvar "DIMZIN" oldDimZin))
   (if oldCmd (setvar "CMDECHO" oldCmd))
   (princ)

@@ -1,101 +1,99 @@
-;;; ==========================================================================
-;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
-;;; MODULE      : tseq.lsp
-;;; COMMAND     : TSEQ
-;;; DESCRIPTION : Rapid Smart-Rename Sequencer with AutoCAD MText Boundary
-;;;               Protection & Alpha/Numeric Auto-Incrementation
-;;; AUTHOR      : Professional Infrastructure CAD Automation
-;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
-;;; ==========================================================================
-;;;
-;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
-;;; --------------------------------------------------------------------------
-;;; In civil drainage and pipe network drafting, multi-line MTEXT labels embed
-;;; crucial hydraulic data formatted with width factors and line breaks:
-;;;   e.g. "{\W0.5;D01; \P600%%c\P15m\P1:100}"
-;;; Standard CAD text editors or find/replace tools often corrupt or strip these
-;;; internal formatting codes when drafters renumber pipes.
-;;;
-;;; TSEQ provides an intelligent in-place sequencer that preserves formatting:
-;;;   1. Prompts the drafter for an initial starting sequence (e.g. "D01" or "P01").
-;;;   2. Analyzes the sequence structure:
-;;;        - Detects alphanumeric prefix (e.g. "D")
-;;;        - Extracts initial numeric value (e.g. 1)
-;;;        - Preserves zero-padding formatting (e.g. "01", "001")
-;;;        - Supports alphabetic incrementation (A -> B -> C ...)
-;;;   3. Enters a rapid, continuous click-to-rename loop.
-;;;   4. Uses a smart semicolon parser (`replace-id`) to isolate and replace ONLY
-;;;      the pipe ID token while leaving the MText width factor (`{\W0.5;`) and
-;;;      all subsequent pipe size, length, and gradient paragraphs completely intact.
-;;;   5. Auto-increments the sequence counter after each click, allowing dozens
-;;;      of consecutive pipes along a mainline to be renumbered in seconds.
-;;;
-;;; DRAFTING WORKFLOW:
-;;; --------------------------------------------------------------------------
-;;;  1. Type TSEQ in the AutoCAD / GstarCAD command line.
-;;;  2. Enter the starting sequence identifier (e.g. "D01" or press Enter for default).
-;;;  3. Click pipe label texts in downstream sequence.
-;;;  4. The pipe ID updates dynamically to [D01], [D02], [D03] without disturbing
-;;;     pipe diameter, length, or slope formatting.
-;;;  5. Press Enter or Spacebar to exit.
-;;;
-;;; USER SETTINGS:
-;;; --------------------------------------------------------------------------
-;;;  - defSeq : Default starting identifier sequence (default: "D01").
-;;; ==========================================================================
-
 (defun c:tseq ( / *error* defSeq userSeq currStr parsed seqType pre val pad
-                  loop sel ent elist entType oldTxt newTxt oldCmd
-                  replace-id split-str pad-num )
+                  loop sel ent elist entType oldTxt newTxt oldCmd history lastItem
+                  get-text put-text replace-id split-str pad-num next-seq)
   (vl-load-com)
   (setq oldCmd (getvar "CMDECHO"))
-  
-  ;; =========================================================================
-  ;; 1. ERROR HANDLING & SYSTEM SETUP
-  ;; =========================================================================
+
   (defun *error* (msg)
     (if oldCmd (setvar "CMDECHO" oldCmd))
-    (if (not (wcmatch (strcat msg "") "*Cancel*,*QUIT*")) (princ (strcat "\nError: " msg)))
+    (if (and msg (not (wcmatch (strcase msg) "*CANCEL*,*QUIT*,*EXIT*")))
+      (princ (strcat "\n[TSEQ Error]: " msg))
+    )
     (princ)
   )
-  
-  ;; =========================================================================
-  ;; 2. MTEXT BOUNDARY PARSER & INCREMENTATION HELPERS
-  ;; =========================================================================
-  ;; Detects the semicolon boundary to protect pipe details and MTEXT formatting
-  (defun replace-id (currTxt newID / pos1 pos2 prefix suffix)
-    ;; Check if the text starts with the hidden MTEXT width formatting (e.g. {\W0.5;)
-    (if (= (substr currTxt 1 3) "{\\W")
+
+  ;; -------------------------------------------------------------------------
+  ;; 1. UNIVERSAL ENTITY TEXT READER & WRITER (TEXT, MTEXT, MULTILEADER)
+  ;; -------------------------------------------------------------------------
+  (defun get-text (ent / elist typ obj res)
+    (setq elist (entget ent) typ (cdr (assoc 0 elist)) res nil)
+    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
+    (if (and obj (not (vl-catch-all-error-p obj)))
+      (setq res (vl-catch-all-apply 'vla-get-TextString (list obj)))
+    )
+    (if (or (null res) (vl-catch-all-error-p res) (= res ""))
+      (setq res (if (= typ "MULTILEADER") (cdr (assoc 304 elist)) (cdr (assoc 1 elist))))
+    )
+    (if res res "")
+  )
+
+  (defun put-text (ent newTxt / elist typ obj)
+    (setq elist (entget ent) typ (cdr (assoc 0 elist)))
+    (if (= typ "MULTILEADER")
+      (if (assoc 304 elist) (entmod (subst (cons 304 newTxt) (assoc 304 elist) elist)))
+      (if (assoc 1 elist)   (entmod (subst (cons 1 newTxt)   (assoc 1 elist)   elist)))
+    )
+    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
+    (if (and obj (not (vl-catch-all-error-p obj)))
       (progn
-        ;; Find the semicolon after the Width factor, then the semicolon after the ID
-        (setq pos1 (vl-string-search ";" currTxt))
-        (if pos1 (setq pos2 (vl-string-search ";" currTxt (1+ pos1))))
-        
-        (if pos2
-          (progn
-            (setq prefix (substr currTxt 1 (1+ pos1)))   ;; Keep "{\W0.5;"
-            (setq suffix (substr currTxt (1+ pos2)))     ;; Keep "; \P600%%c\P15m\P1:100}"
-            (strcat prefix newID suffix)                 ;; Sandwich the new ID in the middle
-          )
-          newID ;; Fallback if it's not a pipe label
-        )
-      )
-      (progn
-        ;; Normal text (No MTEXT formatting). Find the first semicolon.
-        (setq pos1 (vl-string-search ";" currTxt))
-        (if pos1
-          (strcat newID (substr currTxt (1+ pos1)))      ;; Swap everything before the semicolon
-          newID ;; Fallback if it's a raw placeholder (like "P1")
-        )
+        (vl-catch-all-apply 'vla-put-TextString (list obj newTxt))
+        (vl-catch-all-apply 'vla-update (list obj))
       )
     )
   )
 
-  ;; Helper: Separates the text prefix from the numeric suffix for sequencing
-  (defun split-str (str / len i numStr preStr lst)
+  ;; -------------------------------------------------------------------------
+  ;; 2. SMART PARSER: Supports ";", ":" (A29g: 000%%c), and "\P" (Manholes)
+  ;; -------------------------------------------------------------------------
+  (defun replace-id (txt newID / len i loopP ch sec semi stylePrefix remTxt endPos p suffix)
+    (setq len (strlen txt) i 1 loopP T)
+
+    ;; Step A: Walk past leading MTEXT formatting codes ({\W0.5;, {\f...;, \A1;, \L, etc.)
+    (while (and loopP (<= i len))
+      (setq ch  (substr txt i 1))
+      (setq sec (if (< i len) (substr txt (1+ i) 1) ""))
+      (cond
+        ((= ch "{")
+         (setq i (1+ i)))
+        ;; Codes that end with a semicolon (;): \f \F \W \w \H \h \C \c \T \t \Q \q \A \a \p
+        ((and (= ch "\\") (member sec '("F" "f" "W" "w" "H" "h" "C" "c" "T" "t" "Q" "q" "A" "a" "p")))
+         (setq semi (vl-string-search ";" txt (1- i)))
+         (if semi
+           (setq i (+ semi 2))
+           (setq loopP nil)
+         ))
+        ;; Single-letter toggle codes without a semicolon: \L \l \O \o \K \k
+        ((and (= ch "\\") (member sec '("L" "l" "O" "o" "K" "k")))
+         (setq i (+ i 2)))
+        (T (setq loopP nil))
+      )
+    )
+
+    (setq stylePrefix (if (> i 1) (substr txt 1 (1- i)) ""))
+    (setq remTxt (substr txt i))
+
+    ;; Step B: Find the earliest delimiter ending the ID (";", ":", "\P", "\p", "\r", "\n", "}")
+    (setq endPos (strlen remTxt))
+    (foreach del '(";" ":" "\\P" "\\p" "\r" "\n" "}")
+      (if (setq p (vl-string-search del remTxt))
+        (if (< p endPos) (setq endPos p))
+      )
+    )
+
+    ;; Step C: Keep the delimiter and everything after it untouched
+    (setq suffix (substr remTxt (1+ endPos)))
+
+    (strcat stylePrefix newID suffix)
+  )
+
+  ;; -------------------------------------------------------------------------
+  ;; 3. SEQUENCE PARSER & INCREMENTER (Supports 01->02 and 53A->53B)
+  ;; -------------------------------------------------------------------------
+  (defun split-str (str / len i numStr lst)
     (setq len (strlen str))
     (if (> len 0)
-      (progn (setq lst (ascii (substr str len 1)))
+      (progn
+        (setq lst (ascii (substr str len 1)))
         (cond
           ((and (>= lst 48) (<= lst 57))
            (setq i len numStr "")
@@ -107,59 +105,77 @@
           (T (list "NONE" str 0 0))))
       (list "NONE" str 0 0)))
 
-  ;; Helper: Maintains zero-padding (e.g. 01, 02)
   (defun pad-num (num padLen / s)
-    (setq s (itoa num)) (while (< (strlen s) padLen) (setq s (strcat "0" s))) s)
-  
+    (setq s (itoa num))
+    (while (< (strlen s) padLen) (setq s (strcat "0" s)))
+    s
+  )
+
   (princ "\nCommand: TSEQ (Rapid Smart-Rename Sequencer)")
-  
+
   ;; =========================================================================
-  ;; 3. SEQUENCE INITIALIZATION PROMPT
+  ;; 4. PROMPT FOR STARTING ID
   ;; =========================================================================
-  (setq defSeq "D01") 
+  (setq defSeq "D01")
   (setq userSeq (getstring (strcat "\nEnter starting ID sequence <" defSeq ">: ")))
   (setq currStr (if (= userSeq "") defSeq userSeq))
-  
-  ;; Parse the sequence to configure the counting engine
-  (setq parsed (split-str currStr)
-        seqType (nth 0 parsed) pre (nth 1 parsed) val (nth 2 parsed) pad (nth 3 parsed))
-  
+
+  (setq parsed  (split-str currStr)
+        seqType (nth 0 parsed)
+        pre     (nth 1 parsed)
+        val     (nth 2 parsed)
+        pad     (nth 3 parsed)
+        history nil
+        loop    T)
+
   ;; =========================================================================
-  ;; 4. CONTINUOUS CLICK-TO-REPLACE EXECUTION LOOP
+  ;; 5. CLICK-TO-RENAME LOOP (WITH UNDO)
   ;; =========================================================================
-  (setq loop T)
   (while loop
-    (setq sel (entsel (strcat "\nClick pipe text to rename ID to [" currStr "] (or press Enter to exit): ")))
-    (if sel
-      (progn
-        (setq ent (car sel) elist (entget ent) entType (cdr (assoc 0 elist)))
-        
-        ;; Verify that the selected entity is TEXT or MTEXT
-        (if (or (= entType "TEXT") (= entType "MTEXT"))
-          (progn
-            (setq oldTxt (cdr (assoc 1 elist)))
-            
-            ;; Execute the smart replacement
-            (setq newTxt (replace-id oldTxt currStr))
-            
-            ;; Update the entity in drawing database
-            (setq elist (subst (cons 1 newTxt) (assoc 1 elist) elist))
-            (entmod elist)
-            
-            ;; Auto-increment the sequence for the next click
-            (cond
-              ((= seqType "NUM") 
-               (setq val (1+ val) currStr (strcat pre (pad-num val pad))))
-              ((= seqType "ALPHA")
-               (setq val (1+ val))
-               (if (= val 91) (setq val 65)) (if (= val 123) (setq val 97))
-               (setq currStr (strcat pre (chr val))))
-            )
-          )
-          (princ "\nError: Selected object is not TEXT or MTEXT.")
-        )
-      )
-      (setq loop nil) ;; Exits loop when the user presses Enter
+    (initget "Undo")
+    (setq sel (entsel (strcat "\nClick Pipe/Manhole text to rename ID to [" currStr "] [Undo] <Exit>: ")))
+    (cond
+      ((null sel)
+       (setq loop nil))
+
+      ((= sel "Undo")
+       (if history
+         (progn
+           (setq lastItem (car history)
+                 history  (cdr history))
+           (put-text (nth 0 lastItem) (nth 1 lastItem))
+           (setq currStr (nth 2 lastItem)
+                 val     (nth 3 lastItem))
+           (princ (strcat "\n>> Reverted last text. Next ID reset to [" currStr "]."))
+         )
+         (princ "\n>> Nothing to undo.")
+       ))
+
+      (T
+       (setq ent (car sel) elist (entget ent) entType (cdr (assoc 0 elist)))
+       (if (member entType '("TEXT" "MTEXT" "MULTILEADER"))
+         (progn
+           (setq oldTxt (get-text ent))
+           (setq newTxt (replace-id oldTxt currStr))
+
+           ;; Save state for Undo before modifying
+           (setq history (cons (list ent oldTxt currStr val) history))
+
+           (put-text ent newTxt)
+
+           ;; Increment sequence for next click
+           (cond
+             ((= seqType "NUM")
+              (setq val (1+ val) currStr (strcat pre (pad-num val pad))))
+             ((= seqType "ALPHA")
+              (setq val (1+ val))
+              (if (= val 91) (setq val 65))
+              (if (= val 123) (setq val 97))
+              (setq currStr (strcat pre (chr val))))
+           )
+         )
+         (princ "\nError: Selected object is not TEXT, MTEXT, or MULTILEADER.")
+       ))
     )
   )
   (princ)

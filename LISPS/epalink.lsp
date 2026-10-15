@@ -12,7 +12,7 @@
                       txtHgt lastAng count total pt1 pt2 wAng blockName hexRad pts i p entData outStr textOffsetX clean-name)
                       
   ;; =========================================================================
-  ;; USER SETTINGS (Matched to Screenshot Properties)
+  ;; USER SETTINGS 
   ;; =========================================================================
   (setq defTxt 1200.0)           ;; Text height
   (setq txtLayer "Water Text")   ;; Layer name
