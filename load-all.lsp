@@ -6,38 +6,11 @@
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
 ;;; ==========================================================================
-;;;
-;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
-;;; --------------------------------------------------------------------------
-;;; In multi-user civil engineering drawing production, drafters require an
-;;; effortless, one-command mechanism to load the complete infrastructure
-;;; automation library without manual APPLOAD dialog picking or menu compilation.
-;;;
-;;; LOADALL provides automated library initialization:
-;;;   1. Dynamically detects its host directory using `findfile` and `DWGPREFIX`.
-;;;   2. Systematically iterates through all 15 specialized civil engineering
-;;;      LISP modules using error-trapped `vl-catch-all-apply 'load`.
-;;;   3. Accurately reports loading status and any missing dependencies.
-;;;   4. Prints a formatted ASCII command directory to the CAD command line,
-;;;      serving as an instant quick-reference cheat sheet for drafters.
-;;;   5. Automatically executes on initial file load `(c:loadall)` so adding
-;;;      `load-all.lsp` to CAD Startup Suite initializes everything instantly.
-;;;
-;;; DRAFTING WORKFLOW:
-;;; --------------------------------------------------------------------------
-;;;  1. Drag and drop `load-all.lsp` into any open AutoCAD / GstarCAD window,
-;;;     or type `LOADALL` in the command line.
-;;;  2. All 15 automation modules are instantly compiled into memory.
-;;;  3. The interactive command directory is displayed in the command history.
-;;; ==========================================================================
 
-(defun c:loadall ( / *error* oldCmd dir p files loaded failed f fullPath )
+(defun c:loadall ( / *error* oldCmd dir userProfile path1 path2 p files loaded failed f fullPath )
   (setq oldCmd (getvar "CMDECHO"))
   (setvar "CMDECHO" 0)
 
-  ;; =========================================================================
-  ;; 1. ERROR HANDLING & SYSTEM SETUP
-  ;; =========================================================================
   (defun *error* (msg)
     (if oldCmd (setvar "CMDECHO" oldCmd))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
@@ -45,18 +18,35 @@
     (princ))
 
   ;; =========================================================================
-  ;; 2. DIRECTORY RESOLUTION & MODULE REGISTRATION
+  ;; TEAM-PROOF DIRECTORY RESOLUTION (Matches your exact LISPS folder layout)
   ;; =========================================================================
-  ;; Determine current script directory
   (setq dir "")
+  (setq userProfile (getenv "USERPROFILE")) 
+  
+  ;; Check the exact Desktop extraction paths (Looking for "LISPS" folder)
+  (setq path1 (strcat userProfile "\\Desktop\\AutoLISP 1.0\\AutoLISP 1.0\\LISPS\\"))
+  (setq path2 (strcat userProfile "\\Desktop\\AutoLISP 1.0\\LISPS\\"))
+
   (cond
+    ;; 1. Check if the files are on the user's Desktop in the nested folder
+    ((findfile (strcat path1 "pipec.lsp"))
+     (setq dir path1))
+    ;; 2. Check if the files are on the user's Desktop in a single folder
+    ((findfile (strcat path2 "pipec.lsp"))
+     (setq dir path2))
+    ;; 3. Fallback: Check if CAD knows where load-all.lsp is, and look INSIDE the LISPS subfolder
     ((findfile "load-all.lsp")
      (setq p (findfile "load-all.lsp"))
      (if (vl-filename-directory p)
-       (setq dir (strcat (vl-filename-directory p) "\\"))))
+       (setq dir (strcat (vl-filename-directory p) "\\LISPS\\"))))
+    ;; 4. Fallback: Check the folder of the currently open drawing
     ((/= (getvar "DWGPREFIX") "")
-     (setq dir (getvar "DWGPREFIX"))))
+     (setq dir (getvar "DWGPREFIX")))
+  )
 
+  ;; =========================================================================
+  ;; MODULE REGISTRATION (15 files)
+  ;; =========================================================================
   (setq files '(
     "catchmentarea.lsp"
     "csvupdate.lsp"
@@ -76,26 +66,14 @@
   ))
 
   ;; =========================================================================
-  ;; 3. BATCH LOADING ENGINE
+  ;; BATCH LOADING ENGINE
   ;; =========================================================================
   (setq loaded 0 failed 0)
   (foreach f files
-    (setq fullPath nil)
-    (cond
-      ;; 1. Check LISPS subfolder relative to load-all.lsp directory
-      ((and (/= dir "") (findfile (strcat dir "LISPS\\" f)))
-       (setq fullPath (findfile (strcat dir "LISPS\\" f))))
-      ;; 2. Check direct LISPS subfolder in AutoCAD search path
-      ((findfile (strcat "LISPS\\" f))
-       (setq fullPath (findfile (strcat "LISPS\\" f))))
-      ;; 3. Check root directory relative to load-all.lsp (fallback)
-      ((and (/= dir "") (findfile (strcat dir f)))
-       (setq fullPath (findfile (strcat dir f))))
-      ;; 4. Check global AutoCAD support paths
-      ((findfile f)
-       (setq fullPath (findfile f))))
-
-    (if fullPath
+    (setq fullPath (if (/= dir "") (strcat dir f) f))
+    (if (not (findfile fullPath))
+      (setq fullPath (findfile f)))
+    (if (and fullPath (findfile fullPath))
       (if (vl-catch-all-error-p (vl-catch-all-apply 'load (list fullPath)))
         (progn
           (princ (strcat "\n  [FAILED] " f))
@@ -109,7 +87,7 @@
   (setvar "CMDECHO" (if oldCmd oldCmd 1))
 
   ;; =========================================================================
-  ;; 4. SUMMARY BANNER & COMMAND DIRECTORY
+  ;; SUMMARY BANNER & COMMAND DIRECTORY
   ;; =========================================================================
   (princ "\n================================================================")
   (princ "\n   CIVIL & INFRASTRUCTURE AUTOLISP AUTOMATION SUITE LOADED      ")

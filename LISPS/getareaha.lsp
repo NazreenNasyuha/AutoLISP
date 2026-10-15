@@ -2,45 +2,68 @@
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
 ;;; MODULE      : getareaha.lsp
 ;;; COMMAND     : GETAREAHA
-;;; DESCRIPTION : Dedicated Polyline Area Extraction in Hectares (ha) with
-;;;               Centroid Text Annotation & Windows Clipboard Sync
+;;; DESCRIPTION : Single-Click Polyline Area Extractor to Hectares (ha) with
+;;;               Automatic Geometric Centroid Text Injection & Clipboard Copy
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
-;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
 ;;; ==========================================================================
 ;;;
 ;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
 ;;; --------------------------------------------------------------------------
-;;; In municipal township planning, environmental impact assessments, and
-;;; bulk earthwork catchment zoning, parcel and pond areas are measured in Hectares.
+;;; In civil engineering, regional catchment hydrology (e.g. MSMA drainage),
+;;; agricultural schemes, and macro site planning, land areas are documented in
+;;; Hectares (ha). When drawings are prepared in standard civil millimetres:
+;;;   1 m²     = 1,000,000 mm²
+;;;   1 ha     = 10,000 m² = 10,000,000,000 mm² (10^10 mm²)
 ;;;
-;;; GETAREAHA provides instantaneous Hectare extraction:
-;;;   1. Prompts the drafter to select any polyline boundary.
-;;;   2. Queries native object area in square millimeters.
-;;;   3. Converts to Hectares using metric conversion (10,000,000,000 mm2/ha).
-;;;   4. Places a centered text entity directly at the polyline geometric center
-;;;      formatted with 4 decimal places and "ha" suffix.
-;;;   5. Pipes the numerical Hectare value directly to the Windows Clipboard.
+;;; GETAREAHA provides an instant, zero-friction measurement workflow:
+;;;   1. Prompts the drafter to select any closed or open lightweight polyline
+;;;      (LWPOLYLINE or 2D/3D POLYLINE).
+;;;   2. Queries drawing geometric area via native AutoCAD `_.AREA _O`.
+;;;   3. Converts raw millimetre area into metric Hectares (ha).
+;;;   4. Computes the geometric vertex centroid of the boundary.
+;;;   5. Uses atomic DXF `entmake` to inject a clean, middle-centered TEXT entity
+;;;      ("X.XXXX ha") directly inside the boundary footprint.
+;;;   6. Pipes the exact numerical hectare string directly into the Windows
+;;;      Clipboard using native Windows `clip.exe` for immediate Excel pasting.
 ;;;
 ;;; DRAFTING WORKFLOW:
 ;;; --------------------------------------------------------------------------
-;;;   1. Type `GETAREAHA` in the CAD command line.
-;;;   2. Click any closed polyline.
-;;;   3. Centroid text label is placed automatically, and result is copied to clipboard.
+;;;  1. Type GETAREAHA in the AutoCAD / GstarCAD command line.
+;;;  2. Pick the parcel, catchment, or pond polyline boundary.
+;;;  3. The text label is automatically created at the parcel centroid, and
+;;;     the numeric value is copied to the Windows clipboard for instant use.
+;;;
+;;; USER SETTINGS:
+;;; --------------------------------------------------------------------------
+;;;  - txtHgt   : Height of the injected CAD text entity (default: 1500.0 mm).
+;;;  - decimals : Precision decimal places for hectare formatting (default: 4).
 ;;; ==========================================================================
 
-(defun c:getareaha ( / ss ent rawArea haArea outText center oldCmd )
+(defun c:getareaha ( / *error* txtHgt decimals ss ent rawArea haArea outText center oldCmd get-poly-center )
   
   ;; =========================================================================
-  ;; USER SETTINGS
+  ;; 1. USER SETTINGS & CONFIGURATION
   ;; =========================================================================
   (setq txtHgt 1500.0) ;; Height of the injected area text
   (setq decimals 4)    ;; Decimal places for the final number
   ;; =========================================================================
   
+  ;; =========================================================================
+  ;; 2. ERROR HANDLING & SYSTEM SETUP
+  ;; =========================================================================
   (setq oldCmd (getvar "CMDECHO"))
-  (defun *error* (msg) (if oldCmd (setvar "CMDECHO" oldCmd)) (princ))
+  (defun *error* (msg)
+    (if oldCmd (setvar "CMDECHO" oldCmd))
+    (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
+      (princ (strcat "\nError: " msg)))
+    (princ)
+  )
 
-  ;; Helper to calculate the center of the polyline
+  ;; =========================================================================
+  ;; 3. GEOMETRIC CENTROID CALCULATION
+  ;; =========================================================================
+  ;; Helper to calculate the vertex centroid of the polyline
   (defun get-poly-center (e / elist sumX sumY count)
     (setq elist (entget e) sumX 0.0 sumY 0.0 count 0)
     (foreach item elist 
@@ -51,6 +74,9 @@
     (if (> count 0) (list (/ sumX count) (/ sumY count) 0.0) nil)
   )
 
+  ;; =========================================================================
+  ;; 4. BOUNDARY SELECTION & EXECUTION ENGINE
+  ;; =========================================================================
   (if (setq ss (ssget '((0 . "LWPOLYLINE,POLYLINE"))))
     (progn
       (setq ent (ssname ss 0))
@@ -63,16 +89,19 @@
       (setq haArea (/ rawArea 10000000000.0))
       (setq outText (rtos haArea 2 decimals))
       
-      ;; Find center and inject text
+      ;; Find centroid and inject middle-centered text
       (setq center (get-poly-center ent))
       (if center
-        (entmake (list '(0 . "TEXT") (cons 1 (strcat outText " ha")) 
+        (entmake (list '(0 . "TEXT")
+                       (cons 1 (strcat outText " ha")) 
                        (list 10 (car center) (cadr center) 0.0) 
                        (list 11 (car center) (cadr center) 0.0) 
-                       (cons 40 txtHgt) '(72 . 1) '(73 . 2)))
+                       (cons 40 txtHgt)
+                       '(72 . 1)
+                       '(73 . 2)))
       )
       
-      ;; Copy to clipboard
+      ;; Pipe result to Windows Clipboard
       (startapp (strcat "cmd.exe /c echo | set /p=" outText "| clip"))
       (princ (strcat "\n>> Area: " outText " Hectares (Copied to Clipboard!)"))
     )
