@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoCAD Smart XLS-to-CSV Bridge | Engineering MTEXT Formatter</title>
+  <title>JRK AutoCAD Smart XLS-to-CSV Bridge | Engineering MTEXT Formatter</title>
   
-  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <!-- Google Fonts: Inter, JetBrains Mono & Libre Baskerville (for JRK Logo) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,700&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -18,33 +18,38 @@
       theme: {
         extend: {
           colors: {
+            /* Theme-aware surface palette (switches automatically between Dark & Light mode) */
             cadslate: {
-              950: '#070a13',
-              900: '#0c1222',
-              850: '#11192e',
-              800: '#17223b',
-              750: '#1e2b4a',
-              700: '#233355',
-              600: '#334873',
-              500: '#4a6499',
-              400: '#647ea8',
+              950: 'rgb(var(--s-950) / <alpha-value>)',
+              900: 'rgb(var(--s-900) / <alpha-value>)',
+              850: 'rgb(var(--s-850) / <alpha-value>)',
+              800: 'rgb(var(--s-800) / <alpha-value>)',
+              750: 'rgb(var(--s-750) / <alpha-value>)',
+              700: 'rgb(var(--s-700) / <alpha-value>)',
+              600: '#3d5a4b',
+              500: '#527a66',
+              400: '#6b9680',
             },
+            /* Official Jurutera JRK Sdn. Bhd. Corporate Green (#00B050) */
             cadcyan: {
-              300: '#67e8f9',
-              400: '#22d3ee',
-              500: '#06b6d4',
-              600: '#0891b2',
-              700: '#0e7490',
+              300: '#4ade80',
+              400: '#00c85b',
+              500: '#00b050',
+              600: '#009142',
+              700: '#007535',
+              900: '#064e28',
+              950: '#032b16',
             },
             cademerald: {
               400: '#34d399',
-              500: '#10b981',
+              500: '#00b050',
               600: '#059669',
             }
           },
           fontFamily: {
             sans: ['Inter', 'system-ui', 'sans-serif'],
             mono: ['"JetBrains Mono"', 'Consolas', 'monospace'],
+            serif: ['"Libre Baskerville"', 'Georgia', 'serif'],
           }
         }
       }
@@ -62,42 +67,111 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
+    /* Default Dark Mode CSS Variables (JRK Deep Forest/Slate) */
+    :root, html.dark {
+      --s-950: 7 13 10;     /* #070d0a Main background */
+      --s-900: 13 23 18;    /* #0d1712 Card surface */
+      --s-850: 18 32 25;    /* #122019 Secondary bar */
+      --s-800: 27 47 37;    /* #1b2f25 Borders & dividers */
+      --s-750: 36 62 49;    /* #243e31 Hover surface */
+      --s-700: 48 82 65;    /* #305241 Input borders */
+      --scroll-track: #0d1712;
+      --scroll-thumb: #243e31;
+      --scroll-hover: #00b050;
+    }
+
+    /* Light Mode CSS Variables (Clean Engineering Paper & JRK Green) */
+    html.light {
+      --s-950: 241 245 243; /* #f1f5f3 Soft page background */
+      --s-900: 255 255 255; /* #ffffff Crisp white card surface */
+      --s-850: 246 250 248; /* #f6faf8 Sub-header surface */
+      --s-800: 218 231 224; /* #dae7e0 Crisp border */
+      --s-750: 232 243 237; /* #e8f3ed Hover surface */
+      --s-700: 185 210 196; /* #b9d2c4 Input border */
+      --scroll-track: #f1f5f3;
+      --scroll-thumb: #b9d2c4;
+      --scroll-hover: #00b050;
+    }
+
+    /* Light mode text & badge contrast adjustments */
+    html.light body {
+      color: #0f172a;
+    }
+    html.light .text-white {
+      color: #0f172a !important;
+    }
+    html.light .text-slate-100,
+    html.light .text-slate-200 {
+      color: #1e293b !important;
+    }
+    html.light .text-slate-300 {
+      color: #334155 !important;
+    }
+    html.light .text-slate-400 {
+      color: #475569 !important;
+    }
+    html.light .text-cadcyan-300,
+    html.light .text-cadcyan-400 {
+      color: #008a3e !important;
+    }
+    html.light .text-emerald-300,
+    html.light .text-emerald-400,
+    html.light .text-cademerald-400 {
+      color: #047857 !important;
+    }
+    html.light .text-amber-300,
+    html.light .text-amber-400 {
+      color: #b45309 !important;
+    }
+    html.light .bg-cadcyan-950\/50,
+    html.light .bg-cadcyan-950\/60,
+    html.light .bg-cadcyan-950\/30 {
+      background-color: rgba(0, 176, 80, 0.10) !important;
+    }
+    html.light .bg-emerald-950\/50 {
+      background-color: rgba(16, 185, 129, 0.12) !important;
+    }
+    html.light .bg-amber-950\/50 {
+      background-color: rgba(245, 158, 11, 0.12) !important;
+    }
+    html.light .bg-purple-950\/50 {
+      background-color: rgba(168, 85, 247, 0.12) !important;
+    }
+    html.light .text-purple-300 {
+      color: #6b21a8 !important;
+    }
+
     /* Custom scrollbars */
     ::-webkit-scrollbar {
       width: 8px;
       height: 8px;
     }
     ::-webkit-scrollbar-track {
-      background: #0c1222;
+      background: var(--scroll-track);
     }
     ::-webkit-scrollbar-thumb {
-      background: #233355;
+      background: var(--scroll-thumb);
       border-radius: 4px;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: #334873;
+      background: var(--scroll-hover);
     }
 
-    /* CAD Canvas Simulation Style */
+    /* CAD Canvas Simulation Style (Always dark like AutoCAD Modelspace) */
     .cad-preview-box {
-      background-color: #000000;
+      background-color: #050807;
       background-image: 
-        radial-gradient(#1e293b 0.75px, transparent 0.75px),
-        radial-gradient(#1e293b 0.75px, #000000 0.75px);
+        radial-gradient(#1b2f25 0.75px, transparent 0.75px),
+        radial-gradient(#1b2f25 0.75px, #050807 0.75px);
       background-size: 16px 16px;
       background-position: 0 0, 8px 8px;
     }
-
-    @keyframes pulse-subtle {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-    .animate-pulse-subtle {
-      animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    html.light .cad-preview-box .cad-preview-line {
+      color: #f8fafc !important;
     }
   </style>
 </head>
-<body class="bg-cadslate-950 text-slate-100 font-sans min-h-screen flex flex-col selection:bg-cadcyan-500 selection:text-black">
+<body class="bg-cadslate-950 text-slate-100 font-sans min-h-screen flex flex-col selection:bg-cadcyan-500 selection:text-black transition-colors duration-200">
 
   <div id="root" class="flex flex-col min-h-screen"></div>
 
@@ -105,46 +179,48 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // Default configuration rules (Saved in LocalStorage)
     const STORAGE_KEY = 'autocad_smart_bridge_settings';
+    const THEME_KEY = 'autocad_smart_bridge_theme';
+
     const DEFAULT_SETTINGS = {
       textWidthFactor: 0.5,
       shortPipeThreshold: 6,
       mediumPipeThreshold: 14,
       smartLengthFormatting: true,
-      cleanGradientPrefix: true, // cleans '1:' if already present in gradient
+      cleanGradientPrefix: true,
     };
 
-    // Realistic Demo Datasets for 1-Click Testing
+    // Realistic Demo Datasets for 1-Click Testing (Including Duplicate IDs to test Lowest IL logic)
     const DEMO_DRAINAGE_DATA = [
-      { 'Pipe ID': 'D01', 'Diameter': '600', 'Length': 4.5, 'Gradient': '1000' },
-      { 'Pipe ID': 'D02', 'Diameter': '600', 'Length': 6.0, 'Gradient': '1000' },
-      { 'Pipe ID': 'D03', 'Diameter': '900', 'Length': 8.5, 'Gradient': '800' },
-      { 'Pipe ID': 'D04', 'Diameter': '900', 'Length': 12.0, 'Gradient': '800' },
-      { 'Pipe ID': 'D05', 'Diameter': '1200', 'Length': 14.0, 'Gradient': '500' },
-      { 'Pipe ID': 'D06', 'Diameter': '1200', 'Length': 22.5, 'Gradient': '500' },
-      { 'Pipe ID': 'D07', 'Diameter': '1500', 'Length': 30.0, 'Gradient': '400' },
+      { 'Drain Name': '1A', 'U-Drain Width / Ø': '600', 'Length': 4.5, 'Grade': '1000', 'Invert Level (Upstream)': '8.70', 'Invert Level (Downstream)': '8.55' },
+      { 'Drain Name': '1B', 'U-Drain Width / Ø': '600', 'Length': 6.0, 'Grade': '1000', 'Invert Level (Upstream)': '8.55', 'Invert Level (Downstream)': '8.40' },
+      { 'Drain Name': '1B', 'U-Drain Width / Ø': '600', 'Length': 10.0, 'Grade': '800', 'Invert Level (Upstream)': '8.40', 'Invert Level (Downstream)': '8.15' },
+      { 'Drain Name': '1C', 'U-Drain Width / Ø': '900', 'Length': 12.0, 'Grade': '800', 'Invert Level (Upstream)': '8.15', 'Invert Level (Downstream)': '7.95' },
+      { 'Drain Name': '1D', 'U-Drain Width / Ø': '1200', 'Length': 14.0, 'Grade': '500', 'Invert Level (Upstream)': '7.95', 'Invert Level (Downstream)': '7.70' },
+      { 'Drain Name': '1E', 'U-Drain Width / Ø': '1200', 'Length': 22.5, 'Grade': '500', 'Invert Level (Upstream)': '7.70', 'Invert Level (Downstream)': '7.40' },
+      { 'Drain Name': '1F', 'U-Drain Width / Ø': '1500', 'Length': 30.0, 'Grade': '400', 'Invert Level (Upstream)': '7.40', 'Invert Level (Downstream)': '7.05' },
     ];
 
     const DEMO_SEWERAGE_DATA = [
-      { 'Manhole': 'MH01', 'Ground Level': '34.50', 'Invert Level': '32.10', 'Depth': '2.40' },
-      { 'Manhole': 'MH02', 'Ground Level': '34.20', 'Invert Level': '31.60', 'Depth': '2.60' },
-      { 'Manhole': 'MH03', 'Ground Level': '33.85', 'Invert Level': '30.95', 'Depth': '2.90' },
-      { 'Manhole': 'MH04', 'Ground Level': '33.40', 'Invert Level': '30.10', 'Depth': '3.30' },
-      { 'Manhole': 'MH05', 'Ground Level': '32.90', 'Invert Level': '29.20', 'Depth': '3.70' },
-      { 'Manhole': 'MH06', 'Ground Level': '32.10', 'Invert Level': '28.00', 'Depth': '4.10' },
+      { 'Manhole No.': 'MH-01', 'Ground Level': '34.50', 'Invert Level': '32.10', 'Depth of Manhole': '2.40' },
+      { 'Manhole No.': 'MH-02', 'Ground Level': '34.20', 'Invert Level': '31.85', 'Depth of Manhole': '2.35' },
+      { 'Manhole No.': 'MH-02', 'Ground Level': '34.20', 'Invert Level': '31.60', 'Depth of Manhole': '2.60' },
+      { 'Manhole No.': 'MH-03', 'Ground Level': '33.85', 'Invert Level': '30.95', 'Depth of Manhole': '2.90' },
+      { 'Manhole No.': 'MH-04', 'Ground Level': '33.40', 'Invert Level': '30.10', 'Depth of Manhole': '3.30' },
+      { 'Manhole No.': 'MH-05', 'Ground Level': '32.90', 'Invert Level': '29.20', 'Depth of Manhole': '3.70' },
+      { 'Manhole No.': 'MH-06', 'Ground Level': '32.10', 'Invert Level': '28.50', 'Depth of Manhole': '3.60' },
+      { 'Manhole No.': 'MH-06', 'Ground Level': '32.10', 'Invert Level': '28.00', 'Depth of Manhole': '4.10' },
     ];
 
     const DEMO_MIXED_DATA = [
-      { 'ID': 'P101', 'Size': '600', 'Length': '5.2', 'Gradient': '1000', 'GL': '', 'IL': '', 'Depth': '' },
-      { 'ID': 'P102', 'Size': '900', 'Length': '10.5', 'Gradient': '800', 'GL': '', 'IL': '', 'Depth': '' },
-      { 'ID': 'P103', 'Size': '1200', 'Length': '24.0', 'Gradient': '500', 'GL': '', 'IL': '', 'Depth': '' },
-      { 'ID': 'SMH-01', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '42.10', 'IL': '39.80', 'Depth': '2.30' },
-      { 'ID': 'SMH-02', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.80', 'IL': '39.00', 'Depth': '2.80' },
-      { 'ID': 'SMH-03', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.20', 'IL': '38.00', 'Depth': '3.20' },
+      { 'ID': 'D01', 'Size': '600', 'Length': '5.2', 'Gradient': '1000', 'GL': '', 'IL': '7.32', 'Depth': '' },
+      { 'ID': 'D02', 'Size': '900', 'Length': '10.5', 'Gradient': '800', 'GL': '', 'IL': '7.15', 'Depth': '' },
+      { 'ID': 'D03', 'Size': '1200', 'Length': '24.0', 'Gradient': '500', 'GL': '', 'IL': '6.90', 'Depth': '' },
+      { 'ID': 'MH-01', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '42.10', 'IL': '39.80', 'Depth': '2.30' },
+      { 'ID': 'MH-02', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.80', 'IL': '39.00', 'Depth': '2.80' },
+      { 'ID': 'MH-03', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.20', 'IL': '38.00', 'Depth': '3.20' },
     ];
 
-    // Helper: Escape CSV cell value according to RFC 4180
     function escapeCSV(val) {
       if (val === null || val === undefined) return '';
       const str = String(val);
@@ -154,13 +230,31 @@
       return str;
     }
 
-    // Helper: Normalize string for fuzzy matching (case-insensitive, trims & strips extra symbols)
-    function cleanStr(s) {
-      return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    }
-
     function App() {
-      // 1. Settings state (persisted to LocalStorage)
+      // 0. Theme State (Dark Mode is Default)
+      const [theme, setTheme] = useState(() => {
+        try {
+          return localStorage.getItem(THEME_KEY) || 'dark';
+        } catch (e) {
+          return 'dark';
+        }
+      });
+
+      useEffect(() => {
+        const rootEl = document.documentElement;
+        if (theme === 'light') {
+          rootEl.classList.remove('dark');
+          rootEl.classList.add('light');
+        } else {
+          rootEl.classList.remove('light');
+          rootEl.classList.add('dark');
+        }
+        try {
+          localStorage.setItem(THEME_KEY, theme);
+        } catch (e) {}
+      }, [theme]);
+
+      // 1. Settings state
       const [settings, setSettings] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -178,104 +272,118 @@
       const [feedbackType, setFeedbackType] = useState('Bug Report');
       const [feedbackText, setFeedbackText] = useState('');
 
-      // Opens the user's default mail client with a pre-filled report
       const sendFeedbackEmail = () => {
-        const to = 'nazreen@jrksb.com'; // Placeholder recipient - update later
-        const subject = `[CAD Bridge App] ${feedbackType}`;
+        const to = 'nazreen@jrksb.com';
+        const subject = `[JRK CAD Bridge] ${feedbackType}`;
         window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(feedbackText)}`;
         setIsFeedbackOpen(false);
       };
 
       // 2. Excel Parsing States
-      const [fileInfo, setFileInfo] = useState(null); // { name, size, sheetNames }
+      const [fileInfo, setFileInfo] = useState(null);
       const [activeSheet, setActiveSheet] = useState('');
       const [workbook, setWorkbook] = useState(null);
       const [rawRows, setRawRows] = useState([]);
-      const [columns, setColumns] = useState([]); // List of headers in sheet
+      const [columns, setColumns] = useState([]);
 
       // 3. Smart Column Mapping State
       const [columnMap, setColumnMap] = useState({
-        // Drainage columns
         drainId: '',
+        drainIdSub: '', // Optional adjacent sub-ID column (e.g. '1' + 'A' -> '1A')
         size: '',
         length: '',
         gradient: '',
-        // Sewerage columns
+        drainIlUp: '',
+        drainIlDown: '',
         sewerId: '',
+        sewerIdSub: '', // Optional adjacent number column (e.g. 'MH' + '1' -> 'MH-01')
         gl: '',
         il: '',
         depth: '',
       });
 
-      // Detected network mode: 'DRAINAGE', 'SEWERAGE', 'HYBRID', or 'UNSET'
-      const [detectedMode, setDetectedMode] = useState('UNSET');
+      // Smart Auto-Detected Mode ('DRAINAGE', 'SEWERAGE', 'HYBRID')
+      const [detectedMode, setDetectedMode] = useState('DRAINAGE');
+      // User-Selected Mode Override ('AUTO', 'DRAINAGE', 'SEWERAGE', 'HYBRID')
+      const [userDesignMode, setUserDesignMode] = useState('AUTO');
+      // Confidence score details for UI transparency
+      const [detectionReason, setDetectionReason] = useState('Ready for upload');
+
+      // Effective mode combines Smart Auto-Detection with User Override
+      const effectiveMode = userDesignMode === 'AUTO' ? detectedMode : userDesignMode;
 
       // 4. UI search & filter
       const [searchTerm, setSearchTerm] = useState('');
-      const [filterCategory, setFilterCategory] = useState('ALL'); // ALL, DRAINAGE, SEWERAGE, SHORT, MEDIUM, LONG
+      const [filterCategory, setFilterCategory] = useState('ALL');
       const [toastMsg, setToastMsg] = useState(null);
       const [isDragging, setIsDragging] = useState(false);
       const fileInputRef = useRef(null);
 
-      // Save settings to LocalStorage whenever they change
       useEffect(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-        } catch (e) {
-          console.error('Failed to save settings:', e);
-        }
+        } catch (e) {}
       }, [settings]);
 
-      // Show temporary toast notification
       const showToast = (msg) => {
         setToastMsg(msg);
         setTimeout(() => setToastMsg(null), 3500);
       };
 
       // ─────────────────────────────────────────────────────────────
-      // SMART HEADER AUTO-DETECTION (Fuzzy Matching Engine)
+      // SMART MULTI-SIGNAL DISCIPLINE CLASSIFIER & COLUMN DETECTOR
       // ─────────────────────────────────────────────────────────────
-      const detectColumns = (headerList) => {
+      const detectColumns = (headerList, sampleRows = [], metaText = '') => {
         const mapping = {
           drainId: '',
+          drainIdSub: '',
           size: '',
           length: '',
           gradient: '',
+          drainIlUp: '',
+          drainIlDown: '',
           sewerId: '',
+          sewerIdSub: '',
           gl: '',
           il: '',
           depth: '',
         };
 
-        // Fuzzy match rules
-        // Group A: Drainage rules
         const drainRules = {
           drainId: [
-            /^(drain\s*name|pipe\s*id|drain\s*id|pipe\s*name|line\s*id|drain\s*no|pipe\s*no|line\s*no)$/i,
+            /^(drain\s*name\.?|pipe\s*id\.?|drain\s*id\.?|pipe\s*name|line\s*id|drain\s*no\.?|pipe\s*no\.?|line\s*no\.?)$/i,
             /^(id|label|mark|tag)$/i,
           ],
           size: [
-            /^(size|dia|diameter|pipe\s*size|drain\s*size|pipe\s*dia|width|span|dia\s*\(mm\)|size\s*\(mm\))$/i,
-            /(dia|diameter|size)/i,
+            /^(u-?drain\s*width.*|size|dia|diameter|pipe\s*size|drain\s*size|pipe\s*dia|width|span|dia\s*\(mm\)|size\s*\(mm\))$/i,
+            /(u-?drain\s*width|dia|diameter|size)/i,
           ],
           length: [
             /^(length|len|pipe\s*len|pipe\s*length|distance|dist|run|length\s*\(m\)|len\s*\(m\))$/i,
             /(length|len)/i,
           ],
           gradient: [
-            /^(gradient|grad|1:?|slope|fall|grade|ratio|gradient\s*\(1:s\))$/i,
-            /(gradient|grad|slope)/i,
+            /^(grade|gradient|grad|1:?|slope|fall|ratio|gradient\s*\(1:s\))$/i,
+            /(grade|gradient|grad|slope)/i,
+          ],
+          drainIlDown: [
+            /invert\s*level\s*\(\s*downstream\s*\)/i,
+            /(il\s*down|downstream\s*il|invert.*down)/i,
+          ],
+          drainIlUp: [
+            /invert\s*level\s*\(\s*upstream\s*\)/i,
+            /(il\s*up|upstream\s*il|invert.*up)/i,
           ],
         };
 
-        // Group B: Sewerage rules
         const sewerRules = {
           sewerId: [
-            /^(mh|manhole|sewer\s*id|mh\s*no|manhole\s*no|mh\s*id|node|node\s*id|chamber|structure\s*id)$/i,
+            /^(manhole\s*no\.?|mh\s*no\.?|mh|manhole|sewer\s*id|mh\s*id|node|node\s*id|chamber|structure\s*id)$/i,
+            /(manhole\s*no|mh\s*no|^manhole$)/i,
             /^(id|label|mark)$/i,
           ],
           gl: [
-            /^(gl|ground\s*level|ground|cover\s*level|cl|surface\s*level|gl\s*\(m\)|top\s*level|rl\s*gl)$/i,
+            /^(gl|ground\s*level|ground\s*level\s*\(\s*upstream\s*\)|ground|cover\s*level|cl|surface\s*level|gl\s*\(m\)|top\s*level|rl\s*gl)$/i,
             /(ground\s*level|^gl$|cover\s*level)/i,
           ],
           il: [
@@ -283,12 +391,11 @@
             /(invert\s*level|^il$)/i,
           ],
           depth: [
-            /^(depth|mh\s*depth|manhole\s*depth|drop|depth\s*\(m\))$/i,
+            /^(depth\s*of\s*manhole|depth|mh\s*depth|manhole\s*depth|drop|depth\s*\(m\)|depth\s*\(\s*downstream\s*\))$/i,
             /(depth)/i,
           ],
         };
 
-        // Match drainage fields
         Object.entries(drainRules).forEach(([field, patterns]) => {
           for (const pattern of patterns) {
             const found = headerList.find(h => pattern.test(String(h).trim()));
@@ -299,7 +406,6 @@
           }
         });
 
-        // Match sewerage fields
         Object.entries(sewerRules).forEach(([field, patterns]) => {
           for (const pattern of patterns) {
             const found = headerList.find(h => pattern.test(String(h).trim()));
@@ -310,30 +416,144 @@
           }
         });
 
-        // Fallback for ID: if only generic ID was found
-        const genericId = headerList.find(h => /^(id|no|name)$/i.test(String(h).trim()));
+        // Fallback generic ID
+        const genericId = headerList.find(h => /^(id|no\.?|name)$/i.test(String(h).trim()));
         if (genericId) {
           if (!mapping.drainId) mapping.drainId = genericId;
           if (!mapping.sewerId) mapping.sewerId = genericId;
         }
 
-        // Determine detected mode
-        const hasDrain = Boolean(mapping.size || mapping.length || mapping.gradient);
-        const hasSewer = Boolean(mapping.gl || mapping.il || mapping.depth);
+        // Row-Content ID Detector: If 'Manhole No.' was in a merged cell above the header row,
+        // inspect the first 3 columns across the data rows to find where "MH" + numbers live!
+        if (sampleRows.length > 0 && headerList.length >= 2) {
+          const c0 = headerList[0];
+          const c1 = headerList[1];
+          const c0HasMH = sampleRows.slice(0, 20).some(r => /^MH$/i.test(String(r[c0] || '').trim()));
+          const c1HasNum = sampleRows.slice(0, 20).some(r => /^\d+(\.\d+)?$/.test(String(r[c1] || '').trim()));
+          if (c0HasMH && c1HasNum) {
+            mapping.sewerId = c0;
+            mapping.sewerIdSub = c1;
+          }
+        }
 
-        let mode = 'UNSET';
-        if (hasDrain && hasSewer) mode = 'HYBRID';
-        else if (hasSewer) mode = 'SEWERAGE';
-        else if (hasDrain) mode = 'DRAINAGE';
-        else mode = 'DRAINAGE'; // Default
+        // JRK Merged-Cell Fallback if first column is __EMPTY
+        if (!mapping.drainId && !mapping.sewerId && headerList.length > 0) {
+          const firstCol = headerList[0];
+          if (firstCol && /empty/i.test(firstCol)) {
+            mapping.drainId = firstCol;
+            mapping.sewerId = firstCol;
+          }
+        }
+
+        // Cross-fill IDs so switching between Drainage & Sewerage mode always has an ID column ready
+        if (!mapping.drainId && mapping.sewerId) mapping.drainId = mapping.sewerId;
+        if (!mapping.sewerId && mapping.drainId) mapping.sewerId = mapping.drainId;
+
+        // Detect Split ID Columns in JRK Templates:
+        // Case 1 (Sewerage): Col A ('Manhole No.') = "MH", Col B ('__EMPTY') = "1", "2", "3"
+        if (mapping.sewerId && !mapping.sewerIdSub && sampleRows.length > 0) {
+          const sIdx = headerList.indexOf(mapping.sewerId);
+          if (sIdx !== -1 && sIdx + 1 < headerList.length) {
+            const nextCol = headerList[sIdx + 1];
+            const hasMhPrefix = sampleRows.slice(0, 20).some(
+              r => /^MH$/i.test(String(r[mapping.sewerId] || '').trim()) && /^\d+(\.\d+)?$/.test(String(r[nextCol] || '').trim())
+            );
+            if (hasMhPrefix) {
+              mapping.sewerIdSub = nextCol;
+            }
+          }
+        }
+
+        // Case 2 (Drainage): Col B ('Drain Name') = "1", Col C ('__EMPTY_1') = "A", "B", "C"
+        if (mapping.drainId && !mapping.drainIdSub && sampleRows.length > 0) {
+          const dIdx = headerList.indexOf(mapping.drainId);
+          if (dIdx !== -1 && dIdx + 1 < headerList.length) {
+            const nextCol = headerList[dIdx + 1];
+            const hasSubLetter = sampleRows.slice(0, 20).some(
+              r => /^\d+$/.test(String(r[mapping.drainId] || '').trim()) && /^[A-Z]$/i.test(String(r[nextCol] || '').trim())
+            );
+            if (hasSubLetter) {
+              mapping.drainIdSub = nextCol;
+            }
+          }
+        }
+
+        // ───────────────────────────────────────────────────────────
+        // MULTI-SIGNAL SCORING ENGINE (SEWERAGE VS DRAINAGE)
+        // ───────────────────────────────────────────────────────────
+        let sewScore = 0;
+        let drnScore = 0;
+        const reasons = [];
+        const allContext = `${metaText} ${headerList.join(' ')}`.toLowerCase();
+
+        // 1. File / Sheet / Banner keywords
+        if (/(sewer|sewage|iwk|manhole\s*no|manhole\s*details|sewer\s*pipe|population\s*\(pe\)|accumulative\s*pe|peak\s*factor|backdrop)/i.test(allContext)) {
+          sewScore += 8;
+          reasons.push('Sewerage/PE/Manhole headers');
+        }
+        if (/(storm\s*drainage|masma|msma|catchment|coefficient\s*of\s*runoff|overland\s*time|time\s*of\s*concentration|rainfall\s*intensity|u-?drain|drain\s*name|receiveflow)/i.test(allContext)) {
+          drnScore += 8;
+          reasons.push('MSMA/Catchment/Drainage headers');
+        }
+
+        // 2. Specific Column Header Signals
+        if (headerList.some(h => /^manhole/i.test(String(h).trim()))) sewScore += 5;
+        if (headerList.some(h => /^drain\s*name|pipe\s*id|u-?drain/i.test(String(h).trim()))) drnScore += 5;
+
+        // 3. Data Row Content Signals
+        let mhRowCount = 0;
+        let drainRowCount = 0;
+        sampleRows.slice(0, 20).forEach(r => {
+          const sId = String(r[mapping.sewerId] || '').trim();
+          const dId = String(r[mapping.drainId] || '').trim();
+          if (/^MH/i.test(sId)) mhRowCount++;
+          if (/^(\d+[A-Z]|[A-Z]\d+|D\d+|P\d+|CROSSING)/i.test(dId)) drainRowCount++;
+        });
+        if (mhRowCount > 0) {
+          sewScore += 6;
+          reasons.push('MH IDs in rows');
+        }
+        if (drainRowCount > 0) {
+          drnScore += 6;
+          reasons.push('Drain IDs in rows');
+        }
+
+        // 4. Fallback to available column groups if scores are tied at 0
+        const hasDrainCols = Boolean(mapping.size || mapping.length || mapping.gradient);
+        const hasSewerCols = Boolean(mapping.gl || mapping.il || mapping.depth);
+
+        let mode = 'DRAINAGE';
+        if (sewScore > drnScore) {
+          mode = 'SEWERAGE';
+        } else if (drnScore > sewScore) {
+          mode = 'DRAINAGE';
+        } else if (hasDrainCols && hasSewerCols) {
+          mode = 'HYBRID';
+        } else if (hasSewerCols) {
+          mode = 'SEWERAGE';
+        }
 
         setDetectedMode(mode);
+        setDetectionReason(reasons.length > 0 ? reasons.join(' • ') : `Auto-detected ${mode}`);
         setColumnMap(mapping);
       };
 
       // ─────────────────────────────────────────────────────────────
-      // EXCEL FILE PARSING VIA SHEETJS
+      // EXCEL FILE PARSING VIA SHEETJS (Auto-Finds Best Engineering Sheet)
       // ─────────────────────────────────────────────────────────────
+      const isEngineeringHeaderRow = (rowText) => {
+        return (
+          rowText.includes('manhole no') ||
+          rowText.includes('pipe size') ||
+          rowText.includes('drain id') ||
+          rowText.includes('drain name') ||
+          rowText.includes('diameter') ||
+          rowText.includes('u-drain') ||
+          (rowText.includes('length') && (rowText.includes('grade') || rowText.includes('gradient') || rowText.includes('invert'))) ||
+          rowText.includes('invert level')
+        );
+      };
+
       const handleFile = (file) => {
         if (!file) return;
 
@@ -342,7 +562,21 @@
           try {
             const data = new Uint8Array(e.target.result);
             const wb = XLSX.read(data, { type: 'array' });
-            
+
+            // Smart Sheet Picker: Find the first sheet that contains a valid Drainage or Sewerage table
+            // (Skips blank cover sheets like 'DNI' or 'COPYPASTE')
+            let bestSheet = wb.SheetNames[0];
+            for (const sn of wb.SheetNames) {
+              if (/^(dni|copypaste|cover|instruction)/i.test(sn.trim())) continue;
+              const ws = wb.Sheets[sn];
+              const previewArr = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }).slice(0, 25);
+              const foundHeader = previewArr.some(r => isEngineeringHeaderRow(r.join(' ').toLowerCase()));
+              if (foundHeader) {
+                bestSheet = sn;
+                break;
+              }
+            }
+
             setWorkbook(wb);
             setFileInfo({
               name: file.name,
@@ -350,10 +584,10 @@
               sheetNames: wb.SheetNames,
             });
 
-            const firstSheet = wb.SheetNames[0];
-            setActiveSheet(firstSheet);
-            parseSheet(wb, firstSheet);
-            showToast(`Loaded ${file.name} successfully!`);
+            setActiveSheet(bestSheet);
+            setUserDesignMode('AUTO'); // Reset to Smart Auto on new file upload
+            parseSheet(wb, bestSheet, file.name);
+            showToast(`Loaded "${file.name}" (${bestSheet})!`);
           } catch (err) {
             console.error('Error parsing Excel file:', err);
             alert('Failed to parse Excel file. Please ensure it is a valid .xls, .xlsx, or .xlsm file.');
@@ -362,40 +596,33 @@
         reader.readAsArrayBuffer(file);
       };
 
-      const parseSheet = (wb, sheetName) => {
+      const parseSheet = (wb, sheetName, fileNameOverride = '') => {
         const ws = wb.Sheets[sheetName];
         if (!ws) return;
 
-        // 1. Convert sheet to a raw array of arrays to scan for the true header
         const rawArray = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-        
-        // 2. Smart Row Skipper: Scan down to find the row that actually contains your engineering headers
+
+        // Scan down to find the true engineering header row
         let headerRowIndex = 0;
-        for (let i = 0; i < rawArray.length; i++) {
+        for (let i = 0; i < Math.min(rawArray.length, 35); i++) {
           const rowText = rawArray[i].join(' ').toLowerCase();
-          // Looks for any standard JRK Drainage or Sewerage header keyword
-          if (
-            rowText.includes('manhole no') || 
-            rowText.includes('pipe size') || 
-            rowText.includes('drain id') ||
-            rowText.includes('drain name') || // Added to match your image
-            rowText.includes('diameter') ||
-            rowText.includes('length') ||
-            rowText.includes('gradient') ||
-            rowText.includes('grade') || // Added to match your image
-            rowText.includes('pipe id') ||
-            rowText.includes('invert level')
-          ) {
+          if (isEngineeringHeaderRow(rowText)) {
             headerRowIndex = i;
             break;
           }
         }
 
-        // 3. Parse the JSON data starting ONLY from the true header row
-        const jsonData = XLSX.utils.sheet_to_json(ws, { 
-          defval: '', 
+        // Collect metadata text from the top letterhead/title rows to help the classifier
+        const topBannerText = [
+          fileNameOverride || (fileInfo ? fileInfo.name : ''),
+          sheetName,
+          ...rawArray.slice(0, headerRowIndex + 1).map(r => r.join(' '))
+        ].join(' ');
+
+        const jsonData = XLSX.utils.sheet_to_json(ws, {
+          defval: '',
           raw: false,
-          range: headerRowIndex // Tells SheetJS to skip the letterhead
+          range: headerRowIndex,
         });
 
         if (jsonData.length === 0) {
@@ -408,64 +635,127 @@
         const headers = Object.keys(jsonData[0]);
         setColumns(headers);
         setRawRows(jsonData);
-        detectColumns(headers);
-        if (headerRowIndex > 0) {
-          showToast(`Detected table headers at Row ${headerRowIndex + 1} (skipped ${headerRowIndex} header rows)`);
-        }
+        detectColumns(headers, jsonData, topBannerText);
       };
 
       // ─────────────────────────────────────────────────────────────
-      // LOAD DEMO DATASETS (Drainage, Sewerage, Mixed)
+      // LOAD DEMO DATASETS
       // ─────────────────────────────────────────────────────────────
       const loadDemo = (type) => {
         let data, name, headers;
         if (type === 'drainage') {
           data = DEMO_DRAINAGE_DATA;
           name = 'MSMA_Road_Drainage_Schedule.xlsx';
-          headers = ['Pipe ID', 'Diameter', 'Length', 'Gradient'];
+          headers = Object.keys(DEMO_DRAINAGE_DATA[0]);
         } else if (type === 'sewerage') {
           data = DEMO_SEWERAGE_DATA;
           name = 'Sewer_Manhole_Schedule.xlsx';
-          headers = ['Manhole', 'Ground Level', 'Invert Level', 'Depth'];
+          headers = Object.keys(DEMO_SEWERAGE_DATA[0]);
         } else {
           data = DEMO_MIXED_DATA;
           name = 'Infrastructure_Combined_Schedule.xlsx';
-          headers = ['ID', 'Size', 'Length', 'Gradient', 'GL', 'IL', 'Depth'];
+          headers = Object.keys(DEMO_MIXED_DATA[0]);
         }
 
+        setUserDesignMode('AUTO');
         setColumns(headers);
         setRawRows(data);
         setFileInfo({
           name: `${name} (Sample)`,
-          size: '12.8 KB',
+          size: '14.2 KB',
           sheetNames: ['Schedule'],
         });
         setActiveSheet('Schedule');
-        detectColumns(headers);
+        detectColumns(headers, data, name);
         showToast(`Loaded sample ${type} schedule!`);
       };
 
-      // Download an Excel Template for Users
       const downloadTemplate = () => {
         const wb = XLSX.utils.book_new();
         const wsDrain = XLSX.utils.json_to_sheet(DEMO_DRAINAGE_DATA);
         const wsSewer = XLSX.utils.json_to_sheet(DEMO_SEWERAGE_DATA);
         XLSX.utils.book_append_sheet(wb, wsDrain, 'Drainage_Pipes');
         XLSX.utils.book_append_sheet(wb, wsSewer, 'Sewer_Manholes');
-        XLSX.writeFile(wb, 'AutoCAD_Smart_Schedule_Template.xlsx');
-        showToast('Downloaded: AutoCAD_Smart_Schedule_Template.xlsx');
+        XLSX.writeFile(wb, 'JRK_AutoCAD_Smart_Schedule_Template.xlsx');
+        showToast('Downloaded: JRK_AutoCAD_Smart_Schedule_Template.xlsx');
       };
 
       // ─────────────────────────────────────────────────────────────
-      // AUTOCAD MTEXT STRING GENERATION ENGINE (Core Rule Engine)
+      // AUTOCAD MTEXT STRING GENERATION ENGINE
       // ─────────────────────────────────────────────────────────────
-      const formatRow = (row, index) => {
+      const buildDrainageCadString = (id, size, length, gradient) => {
         const widthVal = parseFloat(settings.textWidthFactor) || 0.5;
         const widthPrefix = `{\\W${widthVal};`;
+        const sizeDisplay = size || '600';
+        const gradDisplay = gradient || '1000';
 
-        // 1. RAW DATA EXTRACTION
+        const lenNum = parseFloat(length);
+        const hasValidLen = !isNaN(lenNum) && lenNum >= 0;
+        const lenDisplay = hasValidLen
+          ? (Number.isInteger(lenNum) ? lenNum.toString() : lenNum.toFixed(1))
+          : '0';
+
+        const isShort = hasValidLen && lenNum <= settings.shortPipeThreshold;
+        const isMedium = hasValidLen && lenNum > settings.shortPipeThreshold && lenNum <= settings.mediumPipeThreshold;
+
+        let cadString = '';
+        let conditionBadge = '';
+
+        if (settings.smartLengthFormatting && isShort) {
+          cadString = `${widthPrefix}${id};\\P${sizeDisplay}%%c\\P${lenDisplay}m\\P1:${gradDisplay}}`;
+          conditionBadge = `Short Pipe (<= ${settings.shortPipeThreshold}m, 4-Line)`;
+        } else if (settings.smartLengthFormatting && isMedium) {
+          cadString = `${widthPrefix}${id}; ${sizeDisplay}%%c\\P${lenDisplay}m 1:${gradDisplay}}`;
+          conditionBadge = `Medium Pipe (<= ${settings.mediumPipeThreshold}m, 2-Line)`;
+        } else {
+          cadString = `${widthPrefix}${id}; ${sizeDisplay}%%c ${lenDisplay}m 1:${gradDisplay}}`;
+          conditionBadge = settings.smartLengthFormatting
+            ? `Long Pipe (> ${settings.mediumPipeThreshold}m, 1-Line)`
+            : 'Smart Formatting OFF (1-Line)';
+        }
+
+        return { cadString, conditionBadge, sizeDisplay, lenDisplay, gradDisplay };
+      };
+
+      const buildSewerageCadString = (id, gl, il, depth) => {
+        const widthVal = parseFloat(settings.textWidthFactor) || 0.5;
+        const widthPrefix = `{\\W${widthVal};`;
+        const numGL = parseFloat(gl);
+        const numIL = parseFloat(il);
+        let numDepth = parseFloat(depth);
+
+        if (!isNaN(numGL) && !isNaN(numIL)) {
+          numDepth = numGL - numIL;
+        }
+
+        const glDisplay = !isNaN(numGL) ? numGL.toFixed(2) : (gl || '00.00');
+        const ilDisplay = !isNaN(numIL) ? numIL.toFixed(2) : (il || '00.00');
+        const depthDisplay = !isNaN(numDepth) ? numDepth.toFixed(2) : (depth || '00.00');
+
+        const cadString = `${widthPrefix}${id};\\PGL: ${glDisplay}m\\PIL: ${ilDisplay}m\\PDEPTH: ${depthDisplay}m}`;
+        return { cadString, glDisplay, ilDisplay, depthDisplay };
+      };
+
+      const formatRow = (row) => {
+        // 1. Raw Data Extraction (with Split-Cell Merger support)
         let sewerIdRaw = String(row[columnMap.sewerId] || '').trim();
+        if (columnMap.sewerIdSub) {
+          const subVal = String(row[columnMap.sewerIdSub] || '').trim();
+          if (/^MH$/i.test(sewerIdRaw) && subVal) {
+            sewerIdRaw = `MH-${subVal.replace(/\.0+$/, '')}`;
+          } else if (!sewerIdRaw && subVal) {
+            sewerIdRaw = subVal.replace(/\.0+$/, '');
+          }
+        }
+
         let drainIdRaw = String(row[columnMap.drainId] || '').trim();
+        if (columnMap.drainIdSub) {
+          const subLetter = String(row[columnMap.drainIdSub] || '').trim();
+          if (/^\d+$/.test(drainIdRaw) && /^[A-Z]$/i.test(subLetter)) {
+            drainIdRaw = `${drainIdRaw}${subLetter.toUpperCase()}`;
+          }
+        }
+
         let glRaw = String(row[columnMap.gl] || '').trim();
         let ilRaw = String(row[columnMap.il] || '').trim();
         let depthRaw = String(row[columnMap.depth] || '').trim();
@@ -473,50 +763,78 @@
         let lengthRaw = String(row[columnMap.length] || '').trim();
         let gradRaw = String(row[columnMap.gradient] || '').trim();
 
-        // 2. THE BLANK ROW KILLER (Trap 1)
-        // If there's no ID, and no Size, and no IL... it's a blank row or sub-header. Skip it entirely.
-        if (!sewerIdRaw && !drainIdRaw && !sizeRaw && !ilRaw) return null;
+        // Check if 3-column split gradient ('1' | ':' | '200') is used in JRK Sewerage sheets
+        if (gradRaw === '1' && columnMap.gradient) {
+          const gIdx = columns.indexOf(columnMap.gradient);
+          if (gIdx !== -1 && gIdx + 2 < columns.length) {
+            const colonCell = String(row[columns[gIdx + 1]] || '').trim();
+            const denomCell = String(row[columns[gIdx + 2]] || '').trim();
+            if (colonCell === ':' && /^\d+(\.\d+)?$/.test(denomCell)) {
+              gradRaw = denomCell;
+            }
+          }
+        }
 
-        // 3. THE DIRTY NUMBER & EXCEL ERROR CLEANER (Traps 2 & 3)
+        let ilUpRaw = String(row[columnMap.drainIlUp] || '').trim();
+        let ilDownRaw = String(row[columnMap.drainIlDown] || '').trim();
+
         const cleanNumber = (val) => {
+          if (!val) return '';
           if (val.includes('#DIV/0!') || val.includes('#REF!') || val.includes('#VALUE!')) return '?';
-          // Strips out "mm", "m", "ø" but keeps decimals and numbers
-          return val.replace(/[^0-9.]/g, ''); 
+          return val.replace(/[^0-9.-]/g, '');
         };
 
         sizeRaw = cleanNumber(sizeRaw);
         lengthRaw = cleanNumber(lengthRaw);
         glRaw = cleanNumber(glRaw);
         ilRaw = cleanNumber(ilRaw);
-        
-        // Clean Gradient (handles "1:100", "1/100", or just "100")
+        depthRaw = cleanNumber(depthRaw);
+        ilUpRaw = cleanNumber(ilUpRaw);
+        ilDownRaw = cleanNumber(ilDownRaw);
+
         if (settings.cleanGradientPrefix) {
           gradRaw = gradRaw.replace(/^1\s*[:/]\s*/i, '');
         }
+        gradRaw = cleanNumber(gradRaw);
 
-        const hasSewerData = Boolean(glRaw || ilRaw || depthRaw);
-        const hasDrainData = Boolean(sizeRaw || lengthRaw || gradRaw);
+        // Skip Unit Rows & Sub-Header Rows (e.g., 'ha', 'min', 'm3/s', 'PE FROM MH 1 TO MH 5')
+        const rawIdCheck = (sewerIdRaw || drainIdRaw).toUpperCase();
+        if (!rawIdCheck || rawIdCheck === 'D' || rawIdCheck === 'ID' || rawIdCheck === 'MANHOLE' || rawIdCheck.startsWith('PE FROM')) {
+          return null;
+        }
 
-        let rowCategory = 'DRAINAGE';
-        let cadString = '';
-        let conditionBadge = '';
-        let effectiveId = sewerIdRaw || drainIdRaw;
+        const hasSewerData = Boolean((glRaw && glRaw !== '?') || (ilRaw && ilRaw !== '?') || (depthRaw && depthRaw !== '?'));
+        const hasDrainData = Boolean((sizeRaw && sizeRaw !== '?') || (lengthRaw && lengthRaw !== '?') || (gradRaw && gradRaw !== '?'));
+
+        if (!hasSewerData && !hasDrainData) return null;
+
+        // Decide whether this row is formatted as SEWERAGE or DRAINAGE based on effectiveMode
+        let isSewerRow = false;
+        if (effectiveMode === 'SEWERAGE') {
+          if (!hasSewerData) return null;
+          isSewerRow = true;
+        } else if (effectiveMode === 'DRAINAGE') {
+          if (!hasDrainData) return null;
+          isSewerRow = false;
+        } else {
+          // HYBRID / Dual mode: decide per row
+          isSewerRow = hasSewerData && (!hasDrainData || /^MH/i.test(sewerIdRaw));
+        }
+
+        let effectiveId = isSewerRow ? (sewerIdRaw || drainIdRaw) : (drainIdRaw || sewerIdRaw);
 
         // ====================================================================
         // SMART ID SANITIZER: Standardizes messy Excel IDs to match CAD exactly
         // ====================================================================
-        if (hasSewerData && (!hasDrainData || detectedMode === 'SEWERAGE')) {
-          // If you selected Column 2 and it's just a raw number (e.g., "1" or "2")
-          if (/^\d+$/.test(effectiveId)) {
-            effectiveId = `MH-${effectiveId.padStart(2, '0')}`; // Converts "1" to "MH-01"
-          } 
-          // If it accidentally grabbed "MH 1" or "MH1" from Column 1
-          else if (/^MH\s*-?\s*\d+$/i.test(effectiveId)) {
-            let num = effectiveId.replace(/[^0-9]/g, '');
-            effectiveId = `MH-${num.padStart(2, '0')}`; // Converts "MH 1" to "MH-01"
+        if (isSewerRow) {
+          if (/^\d+(\.0+)?$/.test(effectiveId)) {
+            const cleanInt = effectiveId.replace(/\.0+$/, '');
+            effectiveId = `MH-${cleanInt.padStart(2, '0')}`;
+          } else if (/^MH\s*-?\s*\d+(\.0+)?$/i.test(effectiveId)) {
+            let num = effectiveId.replace(/\.0+$/, '').replace(/[^0-9]/g, '');
+            effectiveId = `MH-${num.padStart(2, '0')}`;
           }
         } else {
-          // Auto-pad Drainage numbers (e.g., "A1" to "A01", "D2" to "D02")
           if (/^[a-zA-Z]\d+$/.test(effectiveId)) {
             let letter = effectiveId.charAt(0);
             let num = effectiveId.substring(1);
@@ -525,133 +843,130 @@
         }
         // ====================================================================
 
-        // Catch rogue data that slipped through but has no valid ID
         if (!effectiveId || effectiveId === '?') return null;
 
-        if (hasSewerData && (!hasDrainData || detectedMode === 'SEWERAGE')) {
-          rowCategory = 'SEWERAGE';
-          
-          if (!depthRaw && glRaw !== '?' && ilRaw !== '?') {
-            const numGL = parseFloat(glRaw);
-            const numIL = parseFloat(ilRaw);
-            if (!isNaN(numGL) && !isNaN(numIL)) {
-              depthRaw = (numGL - numIL).toFixed(2);
-            }
-          }
+        // Calculate Lowest Invert Level on this row (works for BOTH Sewerage and Drainage!)
+        const candidateILs = [ilRaw, ilDownRaw, ilUpRaw]
+          .map(v => parseFloat(v))
+          .filter(n => !isNaN(n));
+        const effectiveIL = candidateILs.length > 0 ? Math.min(...candidateILs) : NaN;
 
-          const glDisplay = glRaw || '00.00';
-          const ilDisplay = ilRaw || '00.00';
-          const depthDisplay = depthRaw || '0.00';
-
-          cadString = `${widthPrefix}${effectiveId};\\PGL: ${glDisplay}m\\PIL: ${ilDisplay}m\\PDEPTH: ${depthDisplay}m}`;
-          conditionBadge = 'Manhole (4-Line Label)';
+        if (isSewerRow) {
+          const sewBuilt = buildSewerageCadString(
+            effectiveId,
+            glRaw,
+            !isNaN(effectiveIL) ? effectiveIL.toFixed(2) : ilRaw,
+            depthRaw
+          );
+          const visualLines = sewBuilt.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
+          return {
+            id: effectiveId,
+            category: 'SEWERAGE',
+            cadString: sewBuilt.cadString,
+            conditionBadge: 'Manhole (4-Line Label)',
+            visualLines,
+            effectiveIL,
+            drainDetails: { size: sizeRaw, length: lengthRaw, gradient: gradRaw, il: !isNaN(effectiveIL) ? effectiveIL.toFixed(2) : '' },
+            sewerDetails: { gl: sewBuilt.glDisplay, il: sewBuilt.ilDisplay, depth: sewBuilt.depthDisplay },
+            rawRow: row,
+          };
         } else {
-          rowCategory = 'DRAINAGE';
-          const sizeDisplay = sizeRaw || '225';
-          const gradDisplay = gradRaw || '100';
-
-          const lenNum = parseFloat(lengthRaw);
-          const hasValidLen = !isNaN(lenNum) && lenNum >= 0;
-          const lenDisplay = hasValidLen ? (Number.isInteger(lenNum) ? lenNum.toString() : lenNum.toFixed(1)) : '0';
-
-          const isShort = hasValidLen && lenNum <= settings.shortPipeThreshold;
-          const isMedium = hasValidLen && lenNum > settings.shortPipeThreshold && lenNum <= settings.mediumPipeThreshold;
-
-          if (settings.smartLengthFormatting && isShort) {
-            cadString = `${widthPrefix}${effectiveId};\\P${sizeDisplay}%%c\\P${lenDisplay}m\\P1:${gradDisplay}}`;
-            conditionBadge = `Short Pipe (<= ${settings.shortPipeThreshold}m, 4-Line)`;
-          } else if (settings.smartLengthFormatting && isMedium) {
-            cadString = `${widthPrefix}${effectiveId}; ${sizeDisplay}%%c\\P${lenDisplay}m 1:${gradDisplay}}`;
-            conditionBadge = `Medium Pipe (<= ${settings.mediumPipeThreshold}m, 2-Line)`;
-          } else {
-            cadString = `${widthPrefix}${effectiveId}; ${sizeDisplay}%%c ${lenDisplay}m 1:${gradDisplay}}`;
-            conditionBadge = settings.smartLengthFormatting ? `Long Pipe (> ${settings.mediumPipeThreshold}m, 1-Line)` : 'Smart Formatting OFF';
-          }
+          const drnBuilt = buildDrainageCadString(effectiveId, sizeRaw, lengthRaw, gradRaw);
+          const visualLines = drnBuilt.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
+          return {
+            id: effectiveId,
+            category: 'DRAINAGE',
+            cadString: drnBuilt.cadString,
+            conditionBadge: drnBuilt.conditionBadge,
+            visualLines,
+            effectiveIL,
+            drainDetails: {
+              size: drnBuilt.sizeDisplay,
+              length: drnBuilt.lenDisplay,
+              gradient: drnBuilt.gradDisplay,
+              il: !isNaN(effectiveIL) ? effectiveIL.toFixed(2) : '',
+            },
+            sewerDetails: { gl: glRaw, il: ilRaw, depth: depthRaw },
+            rawRow: row,
+          };
         }
-
-        const visualLines = cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
-
-        return {
-          id: effectiveId,
-          category: rowCategory,
-          cadString,
-          conditionBadge,
-          visualLines,
-          drainDetails: { size: sizeRaw, length: lengthRaw, gradient: gradRaw },
-          sewerDetails: { gl: glRaw, il: ilRaw, depth: depthRaw },
-          rawRow: row,
-        };
       };
 
       // ─────────────────────────────────────────────────────────────
-      // PROCESS ROWS & SMART DEDUPLICATION ENGINE
+      // PROCESS ROWS & SMART LOWEST-IL DEDUPLICATION (SEWERAGE + DRAINAGE)
       // ─────────────────────────────────────────────────────────────
       const processedRows = useMemo(() => {
-        const rawFormatted = rawRows.map((r, i) => formatRow(r, i));
-        
+        const rawFormatted = rawRows.map((r, i) => formatRow(r, i)).filter(Boolean);
         const uniqueMap = new Map();
-        
-        rawFormatted.forEach(item => {
-          if (!item) return;
 
-          // Skip if no valid ID was found (just pass it through)
-          if (!item.id || item.id.trim() === '' || item.id.startsWith('P_') || item.id.startsWith('MH_')) {
-            uniqueMap.set(Math.random().toString(), item); 
-            return;
-          }
-          
+        rawFormatted.forEach(item => {
           const cleanId = item.id.toUpperCase();
-          
+
           if (!uniqueMap.has(cleanId)) {
-            // First time seeing this ID, add it to the map
-            uniqueMap.set(cleanId, item);
+            uniqueMap.set(cleanId, { ...item, duplicateCount: 1 });
           } else {
-            // DUPLICATE DETECTED! Run intelligent merging logic
+            // DUPLICATE ID FOUND (In Either Sewerage OR Drainage):
+            // Always compare Invert Levels and keep the record with the LOWEST Invert Level!
             const existing = uniqueMap.get(cleanId);
-            
+            const dupCount = (existing.duplicateCount || 1) + 1;
+            const existingIL = existing.effectiveIL;
+            const newIL = item.effectiveIL;
+
+            const newIsLower = (!isNaN(newIL) && (isNaN(existingIL) || newIL < existingIL));
+
             if (item.category === 'SEWERAGE') {
-              // For Manholes: Compare the Invert Levels. Keep the LOWEST IL.
-              const existingIL = parseFloat(existing.sewerDetails.il);
-              const newIL = parseFloat(item.sewerDetails.il);
-              
-              if (!isNaN(existingIL) && !isNaN(newIL) && newIL < existingIL) {
-                // The new row is deeper! Overwrite the old one and recalculate Depth.
-                const widthVal = parseFloat(settings.textWidthFactor) || 0.5;
-                const gl = parseFloat(item.sewerDetails.gl) || parseFloat(existing.sewerDetails.gl);
-                const depth = (gl - newIL).toFixed(2);
-                
-                item.cadString = `{\\W${widthVal};${item.id};\\PGL: ${gl.toFixed(2)}m\\PIL: ${newIL.toFixed(2)}m\\PDEPTH: ${depth}m}`;
-                item.conditionBadge = 'Merged Duplicate (Lowest IL Used)';
-                
-                // Update the visual CAD preview
-                item.visualLines = item.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').split('\\P');
-                
-                uniqueMap.set(cleanId, item);
+              if (newIsLower) {
+                const gl = parseFloat(item.sewerDetails.gl) || parseFloat(existing.sewerDetails.gl) || 0;
+                const sewBuilt = buildSewerageCadString(item.id, gl.toFixed(2), newIL.toFixed(2), '');
+                const updatedItem = {
+                  ...item,
+                  duplicateCount: dupCount,
+                  effectiveIL: newIL,
+                  cadString: sewBuilt.cadString,
+                  sewerDetails: { gl: sewBuilt.glDisplay, il: sewBuilt.ilDisplay, depth: sewBuilt.depthDisplay },
+                  conditionBadge: `Merged ${dupCount} Rows (Lowest IL: ${newIL.toFixed(2)}m)`,
+                  visualLines: sewBuilt.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').split('\\P'),
+                };
+                uniqueMap.set(cleanId, updatedItem);
               } else {
-                // Existing IL is already the lowest. Just update the badge to show we merged it.
-                existing.conditionBadge = 'Merged Duplicate (Lowest IL Used)';
+                const bestILText = !isNaN(existingIL) ? `${existingIL.toFixed(2)}m` : 'Kept';
+                existing.duplicateCount = dupCount;
+                existing.conditionBadge = `Merged ${dupCount} Rows (Lowest IL: ${bestILText})`;
               }
             } else {
-              // For Drainage Pipes (which shouldn't share IDs), flag it but keep the first one
-              existing.conditionBadge = 'Duplicate ID Ignored';
+              // DRAINAGE DUPLICATE: Also takes the row with the LOWEST Invert Level!
+              if (newIsLower) {
+                const updatedItem = {
+                  ...item,
+                  duplicateCount: dupCount,
+                  effectiveIL: newIL,
+                  conditionBadge: `${item.conditionBadge} • Lowest IL (${newIL.toFixed(2)}m of ${dupCount})`,
+                };
+                uniqueMap.set(cleanId, updatedItem);
+              } else {
+                const bestILText = !isNaN(existingIL) ? `${existingIL.toFixed(2)}m` : 'Kept';
+                existing.duplicateCount = dupCount;
+                if (!existing.conditionBadge.includes('Lowest IL')) {
+                  existing.conditionBadge = `${existing.conditionBadge} • Lowest IL (${bestILText} of ${dupCount})`;
+                }
+              }
             }
           }
         });
-        
+
         return Array.from(uniqueMap.values());
-      }, [rawRows, columnMap, settings, detectedMode]);
+      }, [rawRows, columnMap, settings, effectiveMode]);
 
       // Filtered rows for table view
       const filteredRows = useMemo(() => {
         return processedRows.filter(item => {
-          // Category / Condition filter
           if (filterCategory === 'DRAINAGE' && item.category !== 'DRAINAGE') return false;
           if (filterCategory === 'SEWERAGE' && item.category !== 'SEWERAGE') return false;
           if (filterCategory === 'SHORT' && !item.conditionBadge.includes('Short')) return false;
           if (filterCategory === 'MEDIUM' && !item.conditionBadge.includes('Medium')) return false;
           if (filterCategory === 'LONG' && !item.conditionBadge.includes('Long')) return false;
+          if (filterCategory === 'MERGED' && !(item.duplicateCount > 1)) return false;
 
-          // Text Search
           if (!searchTerm.trim()) return true;
           const s = searchTerm.toLowerCase();
           return (
@@ -670,22 +985,21 @@
         const shortCount = processedRows.filter(r => r.conditionBadge.includes('Short')).length;
         const medCount = processedRows.filter(r => r.conditionBadge.includes('Medium')).length;
         const longCount = processedRows.filter(r => r.conditionBadge.includes('Long') || r.conditionBadge.includes('OFF')).length;
-        return { total, drainageCount, sewerageCount, shortCount, medCount, longCount };
+        const mergedCount = processedRows.filter(r => r.duplicateCount > 1).length;
+        return { total, drainageCount, sewerageCount, shortCount, medCount, longCount, mergedCount };
       }, [processedRows]);
 
       // ─────────────────────────────────────────────────────────────
-      // RAW DATA CSV EXPORT ENGINE (For Smart Injection)
+      // CSV EXPORT ENGINES
       // ─────────────────────────────────────────────────────────────
       const exportCSV = () => {
         if (processedRows.length === 0) {
-          alert('No data to export.'); return;
+          alert('No data to export.');
+          return;
         }
-
-        // Export 5 Columns: ID, Size/GL, Length/IL, Gradient/Depth, Category
         const csvLines = processedRows.map(item => {
           const id = escapeCSV(item.id);
           const category = escapeCSV(item.category);
-          
           let val1, val2, val3;
           if (item.category === 'SEWERAGE') {
             val1 = escapeCSV(item.sewerDetails.gl || '00.00');
@@ -696,7 +1010,6 @@
             val2 = escapeCSV(item.drainDetails.length || '0');
             val3 = escapeCSV(item.drainDetails.gradient || '1000');
           }
-          
           return `${id},${val1},${val2},${val3},${category}`;
         });
 
@@ -710,17 +1023,14 @@
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        showToast('Exported "AutoCAD_Smart_Raw.csv" (5-column format) successfully!');
+        showToast('Exported "AutoCAD_Smart_Raw.csv" (5-column format)!');
       };
 
-      // ─────────────────────────────────────────────────────────────
-      // 2-COLUMN MTEXT CSV EXPORT ENGINE (For CSVUPDATE Placeholders)
-      // ─────────────────────────────────────────────────────────────
       const exportMtextCSV = () => {
         if (processedRows.length === 0) {
-          alert('No data to export.'); return;
+          alert('No data to export.');
+          return;
         }
-
         const csvLines = processedRows.map(item => {
           const col1 = escapeCSV(item.id);
           const col2 = escapeCSV(item.cadString);
@@ -737,10 +1047,9 @@
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        showToast('Exported "AutoCAD_Smart_Import.csv" (2-column MTEXT) successfully!');
+        showToast('Exported "AutoCAD_Smart_Import.csv" (2-column MTEXT)!');
       };
 
-      // Copy whole CSV to clipboard
       const copyEntireCSV = () => {
         if (processedRows.length === 0) return;
         const csvContent = processedRows
@@ -751,44 +1060,72 @@
         });
       };
 
-      // Copy single row string
       const copySingleString = (str) => {
         navigator.clipboard.writeText(str).then(() => {
-          showToast(`Copied string to Clipboard!`);
+          showToast('Copied CAD string to Clipboard!');
         });
       };
 
       return (
         <div className="flex flex-col min-h-screen">
           {/* ─────────────────────────────────────────────────────────
-              1. TOP HEADER BAR
+              1. TOP HEADER BAR WITH JRK BRANDING & THEME TOGGLE
           ───────────────────────────────────────────────────────── */}
-          <header className="border-b border-cadslate-800 bg-cadslate-900/95 backdrop-blur sticky top-0 z-40">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-              {/* App Brand & Logo */}
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cadcyan-500 to-cadcyan-700 flex items-center justify-center shadow-lg shadow-cadcyan-500/20 text-cadslate-950">
-                  <svg className="w-6 h-6 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
+          <header className="border-b border-cadslate-800 bg-cadslate-900/95 backdrop-blur sticky top-0 z-40 transition-colors">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+              {/* JRK Corporate Brand & App Title */}
+              <div className="flex items-center space-x-3.5">
+                <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-cadslate-950 border border-slate-300 dark:border-cadcyan-500/40 shadow-md flex items-baseline space-x-1 select-none">
+                  <span className="font-serif text-xs sm:text-sm text-slate-900 dark:text-slate-200 tracking-tight">jurutera</span>
+                  <span className="font-serif font-bold italic text-base sm:text-lg text-[#00b050] tracking-tight">JRK</span>
+                  <span className="font-serif text-xs sm:text-sm text-slate-900 dark:text-slate-200">sdn. bhd.</span>
+                  <span className="font-serif text-[9px] text-slate-500 dark:text-slate-400 hidden md:inline">(548472-X)</span>
                 </div>
+
+                <div className="hidden sm:block h-6 w-px bg-cadslate-800"></div>
+
                 <div>
                   <div className="flex items-center space-x-2">
-                    <h1 className="text-lg font-bold text-white tracking-tight">AutoCAD Smart XLS-to-CSV Bridge</h1>
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cadcyan-500/10 text-cadcyan-400 border border-cadcyan-500/20">
-                      v2.0 Smart
+                    <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">AutoCAD Smart XLS-to-CSV Bridge</h1>
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cadcyan-500/15 text-cadcyan-400 border border-cadcyan-500/30">
+                      v2.5 JRK
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">Engineering MTEXT Formatter for Road Drainage & Sewerage Networks</p>
+                  <p className="text-[11px] text-slate-400 hidden sm:block">
+                    ODI Infrastructure Suite • Drainage & Sewerage MTEXT Automation
+                  </p>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center space-x-3">
+              {/* Action Buttons & Dark/Light Mode Toggle */}
+              <div className="flex items-center space-x-2 sm:space-x-2.5">
+                {/* Dark / Light Mode Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-cadslate-800 hover:bg-cadslate-750 rounded-lg border border-cadslate-700 transition"
+                  title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Night (Dark) Mode'}
+                >
+                  {theme === 'dark' ? (
+                    <>
+                      <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      <span className="hidden md:inline">Light Mode</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 text-cadcyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                      </svg>
+                      <span className="hidden md:inline">Night Mode</span>
+                    </>
+                  )}
+                </button>
+
                 <button
                   onClick={() => setIsGuideOpen(true)}
-                  className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-cadslate-800 hover:bg-cadslate-700 rounded-lg border border-cadslate-700 transition"
-                  title="View AutoCAD LISP integration guide"
+                  className="hidden lg:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-cadslate-800 hover:bg-cadslate-750 rounded-lg border border-cadslate-700 transition"
                 >
                   <svg className="w-4 h-4 text-cadcyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -798,24 +1135,23 @@
 
                 <button
                   onClick={() => setIsFeedbackOpen(true)}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-950/50 hover:bg-amber-900/50 border border-amber-500/40 hover:border-amber-400 rounded-lg shadow-sm transition"
-                  title="Report a bug or suggest a feature"
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-950/50 hover:bg-amber-900/50 border border-amber-500/40 rounded-lg shadow-sm transition"
                 >
                   <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                  <span>Report Bug / Feedback</span>
+                  <span className="hidden sm:inline">Report Bug</span>
                 </button>
 
                 <button
                   onClick={() => setIsSettingsOpen(true)}
-                  className="inline-flex items-center space-x-2 px-3.5 py-1.5 text-xs font-semibold text-cadcyan-300 bg-cadcyan-950/60 hover:bg-cadcyan-900/60 border border-cadcyan-500/40 rounded-lg shadow-sm transition hover:border-cadcyan-400"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-semibold text-cadcyan-300 bg-cadcyan-950/60 hover:bg-cadcyan-900/60 border border-cadcyan-500/40 rounded-lg shadow-sm transition"
                 >
-                  <svg className="w-4 h-4 text-cadcyan-400 animate-spin-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 text-cadcyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span>Formatting Settings</span>
+                  <span className="hidden sm:inline">Settings</span>
                 </button>
               </div>
             </div>
@@ -827,7 +1163,71 @@
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
             {/* ─────────────────────────────────────────────────────────
-                2. MASSIVE DRAG-AND-DROP UPLOAD ZONE
+                2. USER DESIGN DISCIPLINE SELECTOR BAR (Drainage vs Sewerage)
+            ───────────────────────────────────────────────────────── */}
+            <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-lg">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-cadcyan-400 flex items-center space-x-2">
+                  <span>Engineering Design Mode</span>
+                  <span className="text-[11px] font-normal text-slate-400">
+                    ({userDesignMode === 'AUTO' ? `Smart Auto-Detected: ${detectedMode} • ${detectionReason}` : `Manually Locked: ${userDesignMode}`})
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Choose whether this spreadsheet is for <strong className="text-white">Road Drainage Design</strong> (Pipe ID, Size, Length, Gradient) or <strong className="text-white">Sewerage Design</strong> (Manhole ID, GL, IL, Depth). Duplicate IDs automatically keep the <strong className="text-cadcyan-400">Lowest Invert Level (IL)</strong>.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 bg-cadslate-950 p-1.5 rounded-xl border border-cadslate-800 w-full lg:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setUserDesignMode('AUTO')}
+                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    userDesignMode === 'AUTO'
+                      ? 'bg-cadcyan-500 text-black shadow-md'
+                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                  }`}
+                >
+                  ⚡ Smart Auto ({detectedMode})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDesignMode('DRAINAGE')}
+                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    userDesignMode === 'DRAINAGE'
+                      ? 'bg-cadcyan-500 text-black shadow-md'
+                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                  }`}
+                >
+                  🌊 Drainage Design
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDesignMode('SEWERAGE')}
+                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    userDesignMode === 'SEWERAGE'
+                      ? 'bg-cadcyan-500 text-black shadow-md'
+                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                  }`}
+                >
+                  🕳️ Sewerage Design
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserDesignMode('HYBRID')}
+                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    userDesignMode === 'HYBRID'
+                      ? 'bg-cadcyan-500 text-black shadow-md'
+                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                  }`}
+                >
+                  🔀 Dual / Mixed
+                </button>
+              </div>
+            </div>
+
+            {/* ─────────────────────────────────────────────────────────
+                3. MASSIVE DRAG-AND-DROP UPLOAD ZONE
             ───────────────────────────────────────────────────────── */}
             <div
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -839,10 +1239,10 @@
                   handleFile(e.dataTransfer.files[0]);
                 }
               }}
-              className={`relative border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center transition duration-200 group cursor-pointer ${
+              className={`relative border-2 border-dashed rounded-2xl p-8 sm:p-10 text-center transition duration-200 group cursor-pointer ${
                 isDragging
                   ? 'border-cadcyan-400 bg-cadcyan-950/30 scale-[1.005]'
-                  : 'border-cadslate-700 hover:border-cadcyan-500/60 bg-cadslate-900/60 hover:bg-cadslate-900/80'
+                  : 'border-cadslate-700 hover:border-cadcyan-500/70 bg-cadslate-900/70 hover:bg-cadslate-900'
               }`}
               onClick={() => fileInputRef.current && fileInputRef.current.click()}
             >
@@ -859,27 +1259,27 @@
               />
 
               <div className="max-w-xl mx-auto space-y-4">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-cadslate-800 border border-cadslate-700 flex items-center justify-center text-cadcyan-400 group-hover:scale-110 group-hover:border-cadcyan-500/50 transition duration-200 shadow-xl shadow-cadslate-950/80">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-cadslate-800 border border-cadslate-700 flex items-center justify-center text-cadcyan-400 group-hover:scale-110 group-hover:border-cadcyan-500/60 transition duration-200 shadow-xl">
                   <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-bold text-white group-hover:text-cadcyan-300 transition">
-                    Drag & Drop Engineering Excel Spreadsheet
+                  <h3 className="text-lg font-bold text-white group-hover:text-cadcyan-400 transition">
+                    Drag & Drop JRK Engineering Excel Spreadsheet
                   </h3>
                   <p className="text-sm text-slate-400 mt-1">
-                    Supports <span className="text-cadcyan-400 font-mono">.xlsx</span>, <span className="text-cadcyan-400 font-mono">.xls</span>, and <span className="text-cadcyan-400 font-mono">.xlsm</span> calculation sheets
+                    Supports <span className="text-cadcyan-400 font-mono font-semibold">.xlsx</span>, <span className="text-cadcyan-400 font-mono font-semibold">.xls</span>, and <span className="text-cadcyan-400 font-mono font-semibold">.xlsm</span> Drainage & Sewerage calculation sheets
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs text-slate-400">
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs text-slate-400">
                   <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cadslate-800 border border-cadslate-700">
-                    ⚡ Auto-detects Drainage & Sewerage columns
+                    ⚡ Smart Sewerage vs. Drainage Classifier
                   </span>
                   <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cadslate-800 border border-cadslate-700">
-                    📐 MTEXT Paragraph Splitting (\P)
+                    📉 Duplicate IDs Keep Lowest Invert Level
                   </span>
                   <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cadslate-800 border border-cadslate-700">
                     🎯 Ready for AutoCAD CSVUPDATE
@@ -892,29 +1292,28 @@
                   <button
                     type="button"
                     onClick={() => loadDemo('drainage')}
-                    className="px-2.5 py-1 text-xs font-medium text-cadcyan-300 bg-cadcyan-950/50 hover:bg-cadcyan-900/60 border border-cadcyan-500/30 rounded-md transition"
+                    className="px-2.5 py-1 text-xs font-semibold text-cadcyan-300 bg-cadcyan-950/50 hover:bg-cadcyan-900/60 border border-cadcyan-500/30 rounded-md transition"
                   >
-                    Load Sample Drainage
+                    Load Sample Drainage (with Dup IL)
                   </button>
                   <button
                     type="button"
                     onClick={() => loadDemo('sewerage')}
-                    className="px-2.5 py-1 text-xs font-medium text-cademerald-400 bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/30 rounded-md transition"
+                    className="px-2.5 py-1 text-xs font-semibold text-cademerald-400 bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/30 rounded-md transition"
                   >
-                    Load Sample Sewerage
+                    Load Sample Sewerage (with Dup IL)
                   </button>
                   <button
                     type="button"
                     onClick={() => loadDemo('mixed')}
-                    className="px-2.5 py-1 text-xs font-medium text-purple-300 bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 rounded-md transition"
+                    className="px-2.5 py-1 text-xs font-semibold text-purple-300 bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 rounded-md transition"
                   >
                     Load Mixed Network
                   </button>
                   <button
                     type="button"
                     onClick={downloadTemplate}
-                    className="px-2.5 py-1 text-xs font-medium text-slate-300 bg-cadslate-800 hover:bg-cadslate-700 border border-cadslate-700 rounded-md transition flex items-center space-x-1"
-                    title="Download blank sample Excel file"
+                    className="px-2.5 py-1 text-xs font-medium text-slate-300 bg-cadslate-800 hover:bg-cadslate-750 border border-cadslate-700 rounded-md transition flex items-center space-x-1"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -931,7 +1330,7 @@
             {fileInfo && (
               <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center space-x-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-lg bg-cadcyan-500/15 border border-cadcyan-500/30 text-cadcyan-400 flex items-center justify-center">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -942,27 +1341,27 @@
                       <span className="text-xs text-slate-400 font-mono">({fileInfo.size})</span>
                     </div>
                     <div className="text-xs text-slate-400">
-                      Found {rawRows.length} raw rows in active sheet
+                      Found {rawRows.length} raw rows in active sheet • Extracted {processedRows.length} unique CAD items
                     </div>
                   </div>
                 </div>
 
                 {/* Sheet Selector */}
                 {fileInfo.sheetNames && fileInfo.sheetNames.length > 1 && (
-                  <div className="flex items-center space-x-2 text-xs">
-                    <span className="text-slate-400">Sheet:</span>
-                    <div className="flex bg-cadslate-950 p-1 rounded-lg border border-cadslate-800">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="text-slate-400 mr-1">Worksheet:</span>
+                    <div className="flex flex-wrap bg-cadslate-950 p-1 rounded-lg border border-cadslate-800 gap-1">
                       {fileInfo.sheetNames.map((sn) => (
                         <button
                           key={sn}
                           type="button"
                           onClick={() => {
                             setActiveSheet(sn);
-                            parseSheet(workbook, sn);
+                            parseSheet(workbook, sn, fileInfo.name);
                           }}
-                          className={`px-2.5 py-1 rounded-md transition font-medium ${
+                          className={`px-2.5 py-1 rounded-md transition font-semibold ${
                             activeSheet === sn
-                              ? 'bg-cadcyan-600 text-white shadow'
+                              ? 'bg-cadcyan-500 text-black shadow'
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
@@ -976,38 +1375,38 @@
             )}
 
             {/* ─────────────────────────────────────────────────────────
-                3. "DETECTED COLUMNS" SUMMARY BOX (Core Feature Requirement)
+                4. "DETECTED COLUMNS" SUMMARY BOX
             ───────────────────────────────────────────────────────── */}
             {rawRows.length > 0 && (
               <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl p-5 space-y-4 shadow-xl">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-cadslate-800 pb-3">
                   <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-lg bg-cadcyan-500/10 border border-cadcyan-500/20 text-cadcyan-400 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg bg-cadcyan-500/15 border border-cadcyan-500/30 text-cadcyan-400 flex items-center justify-center">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                      <h4 className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
                         <span>Smart Header Auto-Detection Summary</span>
-                        {detectedMode === 'DRAINAGE' && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cadcyan-500/10 text-cadcyan-300 border border-cadcyan-500/30">
-                            Drainage Pipeline Network
+                        {effectiveMode === 'DRAINAGE' && (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cadcyan-500/15 text-cadcyan-300 border border-cadcyan-500/40">
+                            Active Mode: Drainage Design
                           </span>
                         )}
-                        {detectedMode === 'SEWERAGE' && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                            Sewerage Manhole Network
+                        {effectiveMode === 'SEWERAGE' && (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40">
+                            Active Mode: Sewerage Design
                           </span>
                         )}
-                        {detectedMode === 'HYBRID' && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/30">
-                            Dual Network (Drainage + Sewerage)
+                        {effectiveMode === 'HYBRID' && (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/40">
+                            Active Mode: Dual Network (Drainage + Sewerage)
                           </span>
                         )}
                       </h4>
                       <p className="text-xs text-slate-400">
-                        Mapped from row headers using case-insensitive fuzzy pattern recognition
+                        Signals: {detectionReason} • Duplicate rows automatically merge by lowest Invert Level
                       </p>
                     </div>
                   </div>
@@ -1015,7 +1414,7 @@
                   <button
                     type="button"
                     onClick={() => setShowManualMapper(!showManualMapper)}
-                    className="inline-flex items-center space-x-1 text-xs text-cadcyan-400 hover:text-cadcyan-300 self-start sm:self-center font-medium bg-cadslate-800 px-3 py-1.5 rounded-lg border border-cadslate-700 transition"
+                    className="inline-flex items-center space-x-1 text-xs text-cadcyan-400 hover:text-cadcyan-300 self-start sm:self-center font-semibold bg-cadslate-800 px-3 py-1.5 rounded-lg border border-cadslate-700 transition"
                   >
                     <span>{showManualMapper ? 'Hide Manual Mapper' : 'Customize Column Mapping'}</span>
                     <svg className={`w-3.5 h-3.5 transition transform ${showManualMapper ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1027,54 +1426,50 @@
                 {/* Visual Status Chips */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Drainage Group */}
-                  <div className="bg-cadslate-950/60 border border-cadslate-800/80 rounded-lg p-3.5 space-y-2">
+                  <div className={`bg-cadslate-950/60 border rounded-lg p-3.5 space-y-2 transition ${effectiveMode === 'DRAINAGE' ? 'border-cadcyan-500/60 ring-1 ring-cadcyan-500/20' : 'border-cadslate-800/80'}`}>
                     <div className="flex items-center justify-between text-xs font-semibold text-cadcyan-400">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-2 h-2 rounded-full bg-cadcyan-400 inline-block"></span>
-                        <span>A. Drainage Columns</span>
+                        <span>A. Drainage Design Columns</span>
                       </span>
-                      <span className="text-[11px] text-slate-400 font-normal">Requires: ID, Size, Length, Gradient</span>
+                      <span className="text-[11px] text-slate-400 font-normal">ID, Size, Length, Gradient + IL Check</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      {/* ID */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">ID:</span>
                         {columnMap.drainId ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
-                            ✓ {columnMap.drainId}
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
+                            ✓ {columnMap.drainId}{columnMap.drainIdSub ? ` + ${columnMap.drainIdSub}` : ''}
                           </span>
                         ) : (
                           <span className="text-amber-400 text-[11px] italic">Not Found</span>
                         )}
                       </div>
-                      {/* Size */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">Size:</span>
                         {columnMap.size ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
                             ✓ {columnMap.size}
                           </span>
                         ) : (
                           <span className="text-amber-400 text-[11px] italic">Not Found</span>
                         )}
                       </div>
-                      {/* Length */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">Length:</span>
                         {columnMap.length ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
                             ✓ {columnMap.length}
                           </span>
                         ) : (
                           <span className="text-amber-400 text-[11px] italic">Not Found</span>
                         )}
                       </div>
-                      {/* Gradient */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">Gradient:</span>
                         {columnMap.gradient ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
                             ✓ {columnMap.gradient}
                           </span>
                         ) : (
@@ -1085,54 +1480,50 @@
                   </div>
 
                   {/* Sewerage Group */}
-                  <div className="bg-cadslate-950/60 border border-cadslate-800/80 rounded-lg p-3.5 space-y-2">
+                  <div className={`bg-cadslate-950/60 border rounded-lg p-3.5 space-y-2 transition ${effectiveMode === 'SEWERAGE' ? 'border-cadcyan-500/60 ring-1 ring-cadcyan-500/20' : 'border-cadslate-800/80'}`}>
                     <div className="flex items-center justify-between text-xs font-semibold text-cademerald-400">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
                         <span>B. Sewerage Manhole Columns</span>
                       </span>
-                      <span className="text-[11px] text-slate-400 font-normal">Requires: ID, GL, IL, Depth</span>
+                      <span className="text-[11px] text-slate-400 font-normal">ID, GL, Lowest IL, Depth</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      {/* ID */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">ID:</span>
                         {columnMap.sewerId ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
-                            ✓ {columnMap.sewerId}
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
+                            ✓ {columnMap.sewerId}{columnMap.sewerIdSub ? ` + ${columnMap.sewerIdSub}` : ''}
                           </span>
                         ) : (
                           <span className="text-amber-400 text-[11px] italic">Not Found</span>
                         )}
                       </div>
-                      {/* GL */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">GL:</span>
                         {columnMap.gl ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
                             ✓ {columnMap.gl}
                           </span>
                         ) : (
                           <span className="text-amber-400 text-[11px] italic">Not Found</span>
                         )}
                       </div>
-                      {/* IL */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">IL:</span>
                         {columnMap.il ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
                             ✓ {columnMap.il}
                           </span>
                         ) : (
                           <span className="text-amber-400 text-[11px] italic">Not Found</span>
                         )}
                       </div>
-                      {/* Depth */}
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
                         <span className="text-slate-400">Depth:</span>
                         {columnMap.depth ? (
-                          <span className="text-white font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
                             ✓ {columnMap.depth}
                           </span>
                         ) : (
@@ -1150,12 +1541,11 @@
                       Manually select which Excel column corresponds to each engineering parameter:
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      {/* Drainage Drops */}
                       <div>
                         <label className="block text-slate-400 mb-1">Drain ID</label>
                         <select
                           value={columnMap.drainId}
-                          onChange={(e) => setColumnMap({ ...columnMap, drainId: e.target.value })}
+                          onChange={(e) => setColumnMap({ ...columnMap, drainId: e.target.value, drainIdSub: '' })}
                           className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-cadcyan-500 font-mono"
                         >
                           <option value="">-- Auto/None --</option>
@@ -1196,12 +1586,11 @@
                         </select>
                       </div>
 
-                      {/* Sewerage Drops */}
                       <div>
                         <label className="block text-slate-400 mb-1">Manhole ID</label>
                         <select
                           value={columnMap.sewerId}
-                          onChange={(e) => setColumnMap({ ...columnMap, sewerId: e.target.value })}
+                          onChange={(e) => setColumnMap({ ...columnMap, sewerId: e.target.value, sewerIdSub: '' })}
                           className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-emerald-500 font-mono"
                         >
                           <option value="">-- Auto/None --</option>
@@ -1248,7 +1637,7 @@
             )}
 
             {/* ─────────────────────────────────────────────────────────
-                4. DATA PREVIEW TABLE & STATS BAR
+                5. DATA PREVIEW TABLE & STATS BAR
             ───────────────────────────────────────────────────────── */}
             {processedRows.length > 0 && (
               <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl overflow-hidden shadow-2xl space-y-4">
@@ -1256,13 +1645,12 @@
                 {/* Statistics & Filters Bar */}
                 <div className="p-4 bg-cadslate-850 border-b border-cadslate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                   
-                  {/* Category Filter Pills */}
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">
                     <button
                       onClick={() => setFilterCategory('ALL')}
-                      className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition ${
                         filterCategory === 'ALL'
-                          ? 'bg-cadcyan-600 text-white shadow'
+                          ? 'bg-cadcyan-500 text-black shadow'
                           : 'bg-cadslate-800 text-slate-300 hover:bg-cadslate-750'
                       }`}
                     >
@@ -1271,9 +1659,9 @@
                     {stats.drainageCount > 0 && (
                       <button
                         onClick={() => setFilterCategory('DRAINAGE')}
-                        className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition ${
                           filterCategory === 'DRAINAGE'
-                            ? 'bg-cadcyan-600 text-white shadow'
+                            ? 'bg-cadcyan-500 text-black shadow'
                             : 'bg-cadslate-800 text-slate-300 hover:bg-cadslate-750'
                         }`}
                       >
@@ -1283,13 +1671,26 @@
                     {stats.sewerageCount > 0 && (
                       <button
                         onClick={() => setFilterCategory('SEWERAGE')}
-                        className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition ${
                           filterCategory === 'SEWERAGE'
-                            ? 'bg-emerald-600 text-white shadow'
+                            ? 'bg-cadcyan-500 text-black shadow'
                             : 'bg-cadslate-800 text-slate-300 hover:bg-cadslate-750'
                         }`}
                       >
                         Sewerage ({stats.sewerageCount})
+                      </button>
+                    )}
+                    {stats.mergedCount > 0 && (
+                      <button
+                        onClick={() => setFilterCategory('MERGED')}
+                        className={`px-2.5 py-1.5 rounded-lg font-semibold transition ${
+                          filterCategory === 'MERGED'
+                            ? 'bg-amber-500 text-black shadow'
+                            : 'bg-amber-950/50 text-amber-300 border border-amber-500/30 hover:bg-amber-900/50'
+                        }`}
+                        title="Show duplicate IDs that were automatically merged using the lowest Invert Level"
+                      >
+                        Lowest-IL Merged ({stats.mergedCount})
                       </button>
                     )}
                     {stats.shortCount > 0 && (
@@ -1297,7 +1698,7 @@
                         onClick={() => setFilterCategory('SHORT')}
                         className={`px-2.5 py-1.5 rounded-lg font-medium transition ${
                           filterCategory === 'SHORT'
-                            ? 'bg-blue-600 text-white shadow'
+                            ? 'bg-cadcyan-600 text-white shadow'
                             : 'bg-cadslate-800 text-slate-400 hover:bg-cadslate-750'
                         }`}
                       >
@@ -1309,7 +1710,7 @@
                         onClick={() => setFilterCategory('MEDIUM')}
                         className={`px-2.5 py-1.5 rounded-lg font-medium transition ${
                           filterCategory === 'MEDIUM'
-                            ? 'bg-indigo-600 text-white shadow'
+                            ? 'bg-cadcyan-600 text-white shadow'
                             : 'bg-cadslate-800 text-slate-400 hover:bg-cadslate-750'
                         }`}
                       >
@@ -1321,7 +1722,7 @@
                         onClick={() => setFilterCategory('LONG')}
                         className={`px-2.5 py-1.5 rounded-lg font-medium transition ${
                           filterCategory === 'LONG'
-                            ? 'bg-slate-600 text-white shadow'
+                            ? 'bg-cadcyan-600 text-white shadow'
                             : 'bg-cadslate-800 text-slate-400 hover:bg-cadslate-750'
                         }`}
                       >
@@ -1348,8 +1749,7 @@
                     <button
                       type="button"
                       onClick={copyEntireCSV}
-                      className="px-3 py-1.5 text-xs font-semibold text-slate-200 bg-cadslate-800 hover:bg-cadslate-700 border border-cadslate-700 rounded-lg transition flex items-center space-x-1.5 whitespace-nowrap"
-                      title="Copy all 2-column CSV data directly to clipboard"
+                      className="px-3 py-1.5 text-xs font-semibold text-slate-200 bg-cadslate-800 hover:bg-cadslate-750 border border-cadslate-700 rounded-lg transition flex items-center space-x-1.5 whitespace-nowrap"
                     >
                       <svg className="w-3.5 h-3.5 text-cadcyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
@@ -1365,10 +1765,10 @@
                     <thead>
                       <tr className="bg-cadslate-950 text-slate-400 border-b border-cadslate-800 uppercase tracking-wider font-semibold">
                         <th className="py-3 px-4 w-12 text-center">#</th>
-                        <th className="py-3 px-4 w-28">Type</th>
+                        <th className="py-3 px-4 w-28">Discipline</th>
                         <th className="py-3 px-4 w-32">CAD ID</th>
                         <th className="py-3 px-4 w-64">Extracted Parameters</th>
-                        <th className="py-3 px-4">Generated AutoCAD MTEXT String (Column 2)</th>
+                        <th className="py-3 px-4">Generated AutoCAD MTEXT String</th>
                         <th className="py-3 px-4 w-52">Visual CAD Render</th>
                         <th className="py-3 px-4 w-16 text-center">Copy</th>
                       </tr>
@@ -1376,70 +1776,68 @@
                     <tbody className="divide-y divide-cadslate-800/60 font-mono">
                       {filteredRows.map((row, idx) => (
                         <tr key={idx} className="hover:bg-cadslate-800/40 transition">
-                          {/* Row Index */}
                           <td className="py-3 px-4 text-center text-slate-500 font-sans text-[11px]">
                             {idx + 1}
                           </td>
 
-                          {/* Network Type Badge */}
                           <td className="py-3 px-4 font-sans">
                             {row.category === 'SEWERAGE' ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                                 Sewerage
                               </span>
                             ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-cadcyan-500/10 text-cadcyan-400 border border-cadcyan-500/20">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-cadcyan-500/15 text-cadcyan-400 border border-cadcyan-500/30">
                                 Drainage
                               </span>
                             )}
                           </td>
 
-                          {/* CAD ID (Column 1) */}
                           <td className="py-3 px-4 font-bold text-white tracking-wide">
                             <span className="bg-cadslate-950 px-2 py-1 rounded border border-cadslate-800 text-cadcyan-300">
                               {row.id}
                             </span>
                           </td>
 
-                          {/* Extracted Details */}
                           <td className="py-3 px-4 font-sans text-xs">
                             {row.category === 'SEWERAGE' ? (
                               <div className="space-y-0.5 text-slate-300">
                                 <div><span className="text-slate-500">GL:</span> {row.sewerDetails.gl || '—'}m</div>
-                                <div><span className="text-slate-500">IL:</span> {row.sewerDetails.il || '—'}m</div>
+                                <div><span className="text-slate-500">Lowest IL:</span> <strong className="text-cadcyan-400">{row.sewerDetails.il || '—'}m</strong></div>
                                 <div><span className="text-slate-500">Depth:</span> {row.sewerDetails.depth || '—'}m</div>
                               </div>
                             ) : (
                               <div className="space-y-0.5 text-slate-300">
                                 <div><span className="text-slate-500">Dia:</span> {row.drainDetails.size || '—'}%%c</div>
                                 <div><span className="text-slate-500">Len:</span> {row.drainDetails.length || '—'}m</div>
-                                <div><span className="text-slate-500">Slope:</span> 1:{row.drainDetails.gradient || '—'}</div>
+                                <div>
+                                  <span className="text-slate-500">Slope:</span> 1:{row.drainDetails.gradient || '—'}
+                                  {row.drainDetails.il && (
+                                    <span className="ml-2 text-[11px] text-cadcyan-400">(Min IL: {row.drainDetails.il}m)</span>
+                                  )}
+                                </div>
                               </div>
                             )}
-                            <div className="text-[10px] text-slate-400 italic mt-1 font-mono">
+                            <div className={`text-[10px] italic mt-1 font-mono ${row.duplicateCount > 1 ? 'text-amber-400 font-semibold' : 'text-slate-400'}`}>
                               {row.conditionBadge}
                             </div>
                           </td>
 
-                          {/* Generated CAD String */}
                           <td className="py-3 px-4">
                             <div className="bg-cadslate-950 text-cadcyan-300 px-3 py-2 rounded-lg border border-cadslate-800 text-[11px] break-all select-all shadow-inner">
                               {row.cadString}
                             </div>
                           </td>
 
-                          {/* Visual CAD Canvas Simulation */}
                           <td className="py-3 px-4">
-                            <div className="cad-preview-box text-white p-2.5 rounded-lg border border-cadslate-800 text-xs shadow-inner leading-relaxed font-sans">
+                            <div className="cad-preview-box p-2.5 rounded-lg border border-cadslate-800 text-xs shadow-inner leading-relaxed font-sans">
                               {row.visualLines.map((line, lidx) => (
-                                <div key={lidx} className="whitespace-nowrap truncate font-medium text-slate-100">
+                                <div key={lidx} className="cad-preview-line whitespace-nowrap truncate font-medium text-slate-100">
                                   {line}
                                 </div>
                               ))}
                             </div>
                           </td>
 
-                          {/* Copy Button */}
                           <td className="py-3 px-4 text-center">
                             <button
                               type="button"
@@ -1468,15 +1866,15 @@
           </main>
 
           {/* ─────────────────────────────────────────────────────────
-              5. LARGE BOTTOM FOOTER WITH EXPORT BUTTON
+              6. STICKY FOOTER WITH EXPORT BUTTONS
           ───────────────────────────────────────────────────────── */}
-          <footer className="border-t border-cadslate-800 bg-cadslate-900/95 backdrop-blur p-4 sticky bottom-0 z-40">
+          <footer className="border-t border-cadslate-800 bg-cadslate-900/95 backdrop-blur p-4 sticky bottom-0 z-40 transition-colors">
             <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-xs text-slate-400 flex items-center space-x-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-cadcyan-500 animate-pulse"></span>
                 <span>
                   {processedRows.length > 0
-                    ? `Ready to export ${processedRows.length} items (Raw 5-Column & MTEXT 2-Column available)`
+                    ? `Ready to export ${processedRows.length} unique ${effectiveMode} items (Lowest IL applied to ${stats.mergedCount} duplicate IDs)`
                     : 'Awaiting spreadsheet upload or sample selection'}
                 </span>
               </div>
@@ -1488,10 +1886,9 @@
                   disabled={processedRows.length === 0}
                   className={`inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl font-medium text-xs tracking-wide transition border ${
                     processedRows.length > 0
-                      ? 'border-cadslate-700 bg-cadslate-800 hover:bg-cadslate-750 text-slate-300 hover:text-white cursor-pointer'
-                      : 'border-cadslate-800 bg-cadslate-900 text-slate-600 cursor-not-allowed'
+                      ? 'border-cadslate-700 bg-cadslate-800 hover:bg-cadslate-750 text-slate-200 hover:text-white cursor-pointer'
+                      : 'border-cadslate-800 bg-cadslate-900 text-slate-500 cursor-not-allowed'
                   }`}
-                  title="Export 2-column MTEXT CSV for standard CSVUPDATE.lsp placeholder replacement"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1505,10 +1902,9 @@
                   disabled={processedRows.length === 0}
                   className={`w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-bold text-sm tracking-wide shadow-xl transition ${
                     processedRows.length > 0
-                      ? 'bg-gradient-to-r from-cadcyan-500 to-cadcyan-600 hover:from-cadcyan-400 hover:to-cadcyan-500 text-cadslate-950 shadow-cadcyan-500/20 cursor-pointer scale-100 hover:scale-[1.02]'
+                      ? 'bg-gradient-to-r from-[#00b050] to-[#009142] hover:from-[#00c85b] hover:to-[#00b050] text-black shadow-cadcyan-500/20 cursor-pointer scale-100 hover:scale-[1.02]'
                       : 'bg-cadslate-800 text-slate-500 cursor-not-allowed'
                   }`}
-                  title="Export 5-column raw engineering parameters for Smart Injection"
                 >
                   <svg className="w-5 h-5 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1520,12 +1916,11 @@
           </footer>
 
           {/* ─────────────────────────────────────────────────────────
-              USER SETTINGS MODAL (LocalStorage)
+              USER SETTINGS MODAL
           ───────────────────────────────────────────────────────── */}
           {isSettingsOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
               <div className="bg-cadslate-900 border border-cadslate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-6">
-                
                 <div className="flex items-center justify-between border-b border-cadslate-800 pb-3">
                   <div className="flex items-center space-x-2 text-white font-bold text-base">
                     <svg className="w-5 h-5 text-cadcyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1533,10 +1928,7 @@
                     </svg>
                     <span>Formatting Settings</span>
                   </div>
-                  <button
-                    onClick={() => setIsSettingsOpen(false)}
-                    className="text-slate-400 hover:text-white p-1 rounded-lg"
-                  >
+                  <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -1544,7 +1936,6 @@
                 </div>
 
                 <div className="space-y-4 text-xs">
-                  {/* Text Width Factor */}
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
                       Text Width Factor: <span className="text-cadcyan-400 font-mono font-bold">{settings.textWidthFactor}</span>
@@ -1558,12 +1949,8 @@
                       onChange={(e) => setSettings({ ...settings, textWidthFactor: parseFloat(e.target.value) || 0.5 })}
                       className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white font-mono focus:border-cadcyan-500"
                     />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Injected as <code className="text-cadcyan-300">{"{\\W[Width];...}"}</code> to condense AutoCAD MTEXT labels.
-                    </p>
                   </div>
 
-                  {/* Short Pipe Threshold */}
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
                       Short Pipe Threshold: <span className="text-cadcyan-400 font-mono font-bold">{settings.shortPipeThreshold}m</span>
@@ -1577,12 +1964,8 @@
                       onChange={(e) => setSettings({ ...settings, shortPipeThreshold: parseFloat(e.target.value) || 6 })}
                       className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white font-mono focus:border-cadcyan-500"
                     />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Pipes ≤ this length get 4 paragraphs (compact multi-line).
-                    </p>
                   </div>
 
-                  {/* Medium Pipe Threshold */}
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
                       Medium Pipe Threshold: <span className="text-cadcyan-400 font-mono font-bold">{settings.mediumPipeThreshold}m</span>
@@ -1596,73 +1979,49 @@
                       onChange={(e) => setSettings({ ...settings, mediumPipeThreshold: parseFloat(e.target.value) || 14 })}
                       className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white font-mono focus:border-cadcyan-500"
                     />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Pipes between Short and Medium threshold get 2 paragraphs.
-                    </p>
                   </div>
 
-                  {/* Smart Length Formatting Switch */}
                   <div className="pt-2 border-t border-cadslate-800 flex items-center justify-between">
                     <div>
                       <div className="font-semibold text-slate-300">Smart Length Formatting</div>
-                      <div className="text-[11px] text-slate-500">
-                        {settings.smartLengthFormatting
-                          ? 'Auto-partitions into 4, 2, or 1 lines based on pipe length'
-                          : 'OFF: Forces all pipes into 1 single line format'}
-                      </div>
+                      <div className="text-[11px] text-slate-500">Auto-partitions into 4, 2, or 1 lines based on pipe length</div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setSettings({ ...settings, smartLengthFormatting: !settings.smartLengthFormatting })}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
                         settings.smartLengthFormatting ? 'bg-cadcyan-500' : 'bg-cadslate-700'
                       }`}
                     >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          settings.smartLengthFormatting ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
+                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${settings.smartLengthFormatting ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
                   </div>
 
-                  {/* Clean 1: in gradient */}
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-semibold text-slate-300">Clean "1:" Gradient Prefix</div>
-                      <div className="text-[11px] text-slate-500">Prevents double prefix ("1:1:500") if Excel already has "1:500"</div>
+                      <div className="text-[11px] text-slate-500">Prevents double prefix ("1:1:500")</div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setSettings({ ...settings, cleanGradientPrefix: !settings.cleanGradientPrefix })}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
                         settings.cleanGradientPrefix ? 'bg-cadcyan-500' : 'bg-cadslate-700'
                       }`}
                     >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          settings.cleanGradientPrefix ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
+                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${settings.cleanGradientPrefix ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-cadslate-800">
-                  <button
-                    type="button"
-                    onClick={() => setSettings(DEFAULT_SETTINGS)}
-                    className="text-xs text-slate-400 hover:text-white"
-                  >
+                  <button type="button" onClick={() => setSettings(DEFAULT_SETTINGS)} className="text-xs text-slate-400 hover:text-white">
                     Reset Defaults
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsSettingsOpen(false);
-                      showToast('Settings saved to LocalStorage!');
-                    }}
-                    className="px-4 py-2 bg-cadcyan-600 hover:bg-cadcyan-500 text-cadslate-950 font-bold rounded-lg text-xs transition"
+                    onClick={() => { setIsSettingsOpen(false); showToast('Settings saved!'); }}
+                    className="px-4 py-2 bg-cadcyan-500 hover:bg-cadcyan-400 text-black font-bold rounded-lg text-xs transition"
                   >
                     Done & Save
                   </button>
@@ -1672,12 +2031,11 @@
           )}
 
           {/* ─────────────────────────────────────────────────────────
-              FEEDBACK & BUG REPORT MODAL (mailto)
+              FEEDBACK & BUG REPORT MODAL
           ───────────────────────────────────────────────────────── */}
           {isFeedbackOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
               <div className="bg-cadslate-900 border border-cadslate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
-
                 <div className="flex items-center justify-between border-b border-cadslate-800 pb-3">
                   <div className="flex items-center space-x-2 text-white font-bold text-base">
                     <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1685,19 +2043,12 @@
                     </svg>
                     <span>Submit Feedback or Report a Bug</span>
                   </div>
-                  <button
-                    onClick={() => setIsFeedbackOpen(false)}
-                    className="text-slate-400 hover:text-white p-1 rounded-lg"
-                  >
+                  <button onClick={() => setIsFeedbackOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
-
-                <p className="text-xs text-slate-400">
-                  Help improve the CAD Automation Suite. Describe the issue you encountered or a feature you'd like to see added.
-                </p>
 
                 <div className="space-y-4 text-xs">
                   <div>
@@ -1705,39 +2056,30 @@
                     <select
                       value={feedbackType}
                       onChange={(e) => setFeedbackType(e.target.value)}
-                      className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white focus:border-amber-500 focus:outline-none"
+                      className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white focus:border-amber-500"
                     >
                       <option>Bug Report</option>
                       <option>Feature Request</option>
                       <option>Excel Parsing Error</option>
                     </select>
                   </div>
-
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">Description</label>
                     <textarea
-                      rows={7}
+                      rows={6}
                       value={feedbackText}
                       onChange={(e) => setFeedbackText(e.target.value)}
-                      placeholder="What happened? Which Excel file / column / row? What did you expect to see?"
-                      className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white focus:border-amber-500 focus:outline-none resize-y"
+                      placeholder="Describe the Excel file, column, or AutoLISP command issue..."
+                      className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white focus:border-amber-500 resize-y"
                     />
                   </div>
                 </div>
 
                 <div className="flex items-center justify-end space-x-3 pt-4 border-t border-cadslate-800">
-                  <button
-                    type="button"
-                    onClick={() => setIsFeedbackOpen(false)}
-                    className="px-4 py-2 text-xs text-slate-400 hover:text-white rounded-lg transition"
-                  >
+                  <button type="button" onClick={() => setIsFeedbackOpen(false)} className="px-4 py-2 text-xs text-slate-400 hover:text-white">
                     Cancel
                   </button>
-                  <button
-                    type="button"
-                    onClick={sendFeedbackEmail}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-cadslate-950 font-bold rounded-lg text-xs transition"
-                  >
+                  <button type="button" onClick={sendFeedbackEmail} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs transition">
                     Send via Email
                   </button>
                 </div>
@@ -1749,9 +2091,8 @@
               CAD LISP INTEGRATION GUIDE MODAL
           ───────────────────────────────────────────────────────── */}
           {isGuideOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
               <div className="bg-cadslate-900 border border-cadslate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
-                
                 <div className="flex items-center justify-between border-b border-cadslate-800 pb-3">
                   <div className="flex items-center space-x-2 text-white font-bold text-base">
                     <svg className="w-5 h-5 text-cadcyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1759,51 +2100,36 @@
                     </svg>
                     <span>AutoCAD / GstarCAD Workflow</span>
                   </div>
-                  <button
-                    onClick={() => setIsGuideOpen(false)}
-                    className="text-slate-400 hover:text-white p-1 rounded-lg"
-                  >
+                  <button onClick={() => setIsGuideOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
 
-                <div className="space-y-3 text-xs text-slate-300 leading-relaxed font-sans">
+                <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
                   <div className="p-3 rounded-lg bg-cadslate-950 border border-cadslate-800">
-                    <div className="font-bold text-cadcyan-300 mb-1">Step 1: Export CSV from this Web App</div>
+                    <div className="font-bold text-cadcyan-400 mb-1">Step 1: Upload & Verify Design Mode</div>
                     <p className="text-slate-400">
-                      Upload your Excel calculation sheet, verify the Preview table, and click <strong className="text-white">"Export CAD .CSV"</strong>. A 2-column file named <code className="text-cadcyan-400">AutoCAD_Smart_Import.csv</code> will be downloaded.
+                      Drop your JRK Excel file. The app auto-detects <strong className="text-white">Drainage</strong> or <strong className="text-white">Sewerage</strong> (or you can click the mode buttons at the top to switch manually). Duplicate IDs automatically retain the lowest Invert Level.
                     </p>
                   </div>
-
                   <div className="p-3 rounded-lg bg-cadslate-950 border border-cadslate-800">
-                    <div className="font-bold text-cadcyan-300 mb-1">Step 2: Run CSVUPDATE in AutoCAD / GstarCAD</div>
+                    <div className="font-bold text-cadcyan-400 mb-1">Step 2: Export Smart Raw .CSV</div>
                     <p className="text-slate-400">
-                      In CAD, load <code className="text-cadcyan-400">csvupdate.lsp</code> (or run <code className="text-cadcyan-400">LOADALL</code>) and type:
+                      Click <strong className="text-white">"Export Smart Raw .CSV (5-Column)"</strong> to download <code className="text-cadcyan-400">AutoCAD_Smart_Raw.csv</code>.
                     </p>
-                    <div className="bg-cadslate-900 p-2 mt-1 rounded font-mono text-[11px] text-cadcyan-300 border border-cadslate-800">
-                      Command: CSVUPDATE
-                    </div>
                   </div>
-
                   <div className="p-3 rounded-lg bg-cadslate-950 border border-cadslate-800">
-                    <div className="font-bold text-cadcyan-300 mb-1">Step 3: Select File & CAD Placeholders</div>
+                    <div className="font-bold text-cadcyan-400 mb-1">Step 3: Run CSVUPDATE in AutoCAD / GstarCAD</div>
                     <p className="text-slate-400">
-                      1. Pick the exported <code className="text-cadcyan-400">AutoCAD_Smart_Import.csv</code> file.<br/>
-                      2. Click any reference text to match target layer (or press Enter for all).<br/>
-                      3. Select placeholder texts (e.g. <code className="text-white">P101</code>, <code className="text-white">MH01</code>).<br/>
-                      4. Every placeholder is instantly replaced with its formatted MTEXT string!
+                      Type <code className="text-cadcyan-400">CSVUPDATE</code>, select the exported CSV file, and click one text on the target layer. Missing items are highlighted in <strong className="text-red-400">Red</strong> and duplicate CAD IDs in <strong className="text-blue-400">Blue</strong>.
                     </p>
                   </div>
                 </div>
 
                 <div className="text-right pt-2 border-t border-cadslate-800">
-                  <button
-                    type="button"
-                    onClick={() => setIsGuideOpen(false)}
-                    className="px-4 py-2 bg-cadslate-800 hover:bg-cadslate-700 text-white font-medium rounded-lg text-xs transition"
-                  >
+                  <button type="button" onClick={() => setIsGuideOpen(false)} className="px-4 py-2 bg-cadcyan-500 hover:bg-cadcyan-400 text-black font-bold rounded-lg text-xs transition">
                     Got it
                   </button>
                 </div>
@@ -1813,7 +2139,7 @@
 
           {/* Toast Notification */}
           {toastMsg && (
-            <div className="fixed bottom-20 right-6 z-50 bg-cadcyan-500 text-cadslate-950 font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl animate-bounce flex items-center space-x-2">
+            <div className="fixed bottom-20 right-6 z-50 bg-cadcyan-500 text-black font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-center space-x-2">
               <svg className="w-4 h-4 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
@@ -1824,7 +2150,6 @@
       );
     }
 
-    // Render the App
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
