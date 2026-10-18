@@ -3,8 +3,7 @@
 ;;; MODULE      : pipec.lsp
 ;;; COMMAND     : PIPEC
 ;;; DESCRIPTION : Fully Automated Civil Road Drainage Network Generator
-;;;               (Auto-Segmentation, Sump Placement, Hydraulic Flow Arrows,
-;;;                Collision-Aware Pipe Annotations & Parametric SIL Multileaders)
+;;;               (Universal Multi-Drawing SIL00.00 Multileader Engine)
 ;;; ==========================================================================
 
 (defun c:pipec ( / *error* sysVars sysVals 
@@ -16,12 +15,13 @@
                    ;; --- working variables ---
                    askInfo ans currCode prevCode size grad pt1 pt2 ang dist numSeg segDist i
                    sumpPt pA pB segMid segDistM linePt1 linePt2 arrowSize arrowP1 arrowP2
-                   txtAngRad finalTxtAng pText str mtextStr distAbove distBelow pTextAbove pTextBelow
-                   blockedAbove blockedBelow history stepEnts loop sumpCache silCache c e
+                   txtAngRad finalTxtAng pText str strCode strCodeInline mtextStr
+                   distAbove distBelow pTextAbove pTextBelow
+                   blockedAbove blockedBelow history stepEnts lastStep loop sumpCache silCache e
                    ;; --- local helper functions ---
-                   ensure-layer esc-filter pt2d near-p mk finish-cmd next-seq
-                   scan-sumps scan-sils mlstyle-exists-p ensure-mlstyle text-blocked-p
-                   make-il make-il-mleader make-il-basic)
+                   ensure-layer ensure-textstyle esc-filter pt2d near-p mk next-seq
+                   scan-sumps scan-sils mlstyle-exists-p ensure-mlstyle force-mleader-text
+                   style-mleader-obj text-blocked-p make-il make-il-mleader make-il-basic)
 
   ;; =========================================================================
   ;; USER SETTINGS
@@ -59,21 +59,30 @@
   
   (setq pipeTextRot0 nil) 
 
-  (setq defCode "A01") ;; Restored default
+  (setq defCode "A01")
   (setq defSize "600")
   (setq defGrad "1:000")
   ;; =========================================================================
 
-  (setq sysVars '("CMDECHO" "CMLEADERSTYLE")
+  (vl-load-com)
+  (setq sysVars '("CMDECHO" "CMLEADERSTYLE" "CLAYER")
         sysVals (mapcar 'getvar sysVars))
 
+  ;; Ensure layer exists AND is thawed, turned ON, and unlocked in any drawing
   (defun ensure-layer (nm col)
     (if (not (tblsearch "LAYER" nm))
       (progn
         (entmake (list '(0 . "LAYER") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbLayerTableRecord")
                        (cons 2 nm) '(70 . 0) (cons 62 col) '(6 . "Continuous")))
         (if (not (tblsearch "LAYER" nm))   
-          (command "_.-LAYER" "_N" nm "_C" col nm "")))))
+          (command "_.-LAYER" "_N" nm "_C" col nm ""))))
+    (command "_.-LAYER" "_T" nm "_ON" nm "_U" nm ""))
+
+  (defun ensure-textstyle (nm wid)
+    (if (not (tblsearch "STYLE" nm))
+      (entmake (list '(0 . "STYLE") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbTextStyleTableRecord")
+                     (cons 2 nm) '(70 . 0) '(40 . 0.0) (cons 41 wid) '(50 . 0.0)
+                     '(71 . 0) '(3 . "romans.shx") '(4 . "")))))
 
   (defun esc-filter (s / k ch out)
     (setq k 1 out "")
@@ -92,11 +101,6 @@
   (defun mk (data)
     (if (entmake data) (setq stepEnts (cons (entlast) stepEnts))))
 
-  (defun finish-cmd ()
-    (repeat 5 (if (> (getvar "CMDACTIVE") 0) (command "")))
-    (if (> (getvar "CMDACTIVE") 0) (command)))
-
-  ;; Helper: Auto-Increments ID (Handles both Numbers like A01 and Letters like 1A)
   (defun next-seq (str / len lastChar asciiVal i numStr preStr val pad s)
     (setq len (strlen str))
     (if (> len 0)
@@ -104,13 +108,10 @@
         (setq lastChar (substr str len 1)
               asciiVal (ascii lastChar))
         (cond
-          ;; Ends in a letter A-Y or a-y (e.g. "1A" -> "1B")
           ((or (and (>= asciiVal 65) (< asciiVal 90)) (and (>= asciiVal 97) (< asciiVal 122)))
            (strcat (substr str 1 (1- len)) (chr (1+ asciiVal))))
-          ;; Wrap Z to A
           ((= asciiVal 90) (strcat (substr str 1 (1- len)) "A"))
           ((= asciiVal 122) (strcat (substr str 1 (1- len)) "a"))
-          ;; Ends in a number (e.g. "A01" -> "A02")
           ((and (>= asciiVal 48) (<= asciiVal 57))
            (setq i len numStr "")
            (while (and (> i 0) (>= (ascii (substr str i 1)) 48) (<= (ascii (substr str i 1)) 57))
@@ -118,7 +119,6 @@
            (setq preStr (substr str 1 i) val (1+ (atoi numStr)) pad (strlen numStr) s (itoa val))
            (while (< (strlen s) pad) (setq s (strcat "0" s)))
            (strcat preStr s))
-          ;; Fallback
           (T str)
         )
       )
@@ -158,33 +158,84 @@
     (setq d (dictsearch (namedobjdict) "ACAD_MLEADERSTYLE"))
     (if (and d (dictsearch (cdr (assoc -1 d)) nm)) T nil))
 
-  (defun ensure-mlstyle (nm / dict mlStyles styleObj)
-    (vl-load-com)
-    (if (and (vl-symbol-value 'vla-get-ActiveDocument)
-             (vl-symbol-value 'vlax-get-acad-object))
-      (vl-catch-all-apply
-        '(lambda ()
-           (setq dict (vla-get-Dictionaries (vla-get-ActiveDocument (vlax-get-acad-object))))
-           (setq mlStyles (vla-item dict "ACAD_MLEADERSTYLE"))
-           (if (vl-catch-all-error-p (setq styleObj (vl-catch-all-apply 'vla-item (list mlStyles nm))))
-             (setq styleObj (vla-AddObject mlStyles nm "AcDbMLeaderStyle")))
-           (if (and styleObj (not (vl-catch-all-error-p styleObj)))
-             (progn
-               (if (vlax-property-available-p styleObj 'TextHeight T)
-                 (vlax-put-property styleObj 'TextHeight txtHgt))
-               (if (vlax-property-available-p styleObj 'ArrowSize T)
-                 (vlax-put-property styleObj 'ArrowSize mlArrowSize))
-               (if (vlax-property-available-p styleObj 'LandingDistance T)
-                 (vlax-put-property styleObj 'LandingDistance mlLandDist))
-               (if (vlax-property-available-p styleObj 'LandingGap T)
-                 (vlax-put-property styleObj 'LandingGap mlLandGap))
-               (if (vlax-property-available-p styleObj 'TextLeftAttachmentType T)
-                 (vlax-put-property styleObj 'TextLeftAttachmentType 1))
-               (if (vlax-property-available-p styleObj 'TextRightAttachmentType T)
-                 (vlax-put-property styleObj 'TextRightAttachmentType 1))
-               (if (tblsearch "STYLE" txtStyle)
-                 (if (vlax-property-available-p styleObj 'TextStyleName T)
-                   (vlax-put-property styleObj 'TextStyleName txtStyle)))))))))
+  ;; Bulletproof MLeaderStyle creator: initializes ALL properties individually
+  (defun ensure-mlstyle (nm / doc dict mlStyles styleObj)
+    (setq doc (vl-catch-all-apply 'vla-get-ActiveDocument (list (vlax-get-acad-object))))
+    (if (and doc (not (vl-catch-all-error-p doc)))
+      (progn
+        (setq dict (vl-catch-all-apply 'vla-get-Dictionaries (list doc)))
+        (if (and dict (not (vl-catch-all-error-p dict)))
+          (setq mlStyles (vl-catch-all-apply 'vla-item (list dict "ACAD_MLEADERSTYLE"))))
+        (if (and mlStyles (not (vl-catch-all-error-p mlStyles)))
+          (progn
+            (setq styleObj (vl-catch-all-apply 'vla-item (list mlStyles nm)))
+            (if (vl-catch-all-error-p styleObj)
+              (setq styleObj (vl-catch-all-apply 'vla-AddObject (list mlStyles nm "AcDbMLeaderStyle"))))
+            (if (and styleObj (not (vl-catch-all-error-p styleObj)))
+              (progn
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'ContentType 2))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'LeaderLineType 1))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'MaxLeaderSegmentsPoints 2))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'EnableLanding :vlax-true))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'EnableDogleg :vlax-true))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'Annotative :vlax-false))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'ScaleFactor 1.0))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'TextHeight txtHgt))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'ArrowSize mlArrowSize))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'DoglegLength mlLandDist))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'LandingGap mlLandGap))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'TextLeftAttachmentType 1))
+                (vl-catch-all-apply 'vlax-put-property (list styleObj 'TextRightAttachmentType 1))
+                (if (tblsearch "STYLE" txtStyle)
+                  (vl-catch-all-apply 'vlax-put-property (list styleObj 'TextStyleName txtStyle)))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+  (defun force-mleader-text (ent str / ed newEd replaced item)
+    (setq ed (entget ent) newEd nil replaced nil)
+    (foreach item ed
+      (if (and (not replaced)
+               (= (car item) 304)
+               (/= (strcase (cdr item)) "LEADER_LINE{"))
+        (progn
+          (setq newEd (cons (cons 304 str) newEd))
+          (setq replaced T))
+        (setq newEd (cons item newEd))))
+    (if replaced (progn (entmod (reverse newEd)) (entupd ent)))
+  )
+
+  (defun style-mleader-obj (newEnt str / ed obj)
+    (setq ed (entget newEnt))
+    (entmod (subst (cons 8 mlLayer) (assoc 8 ed) ed))
+    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list newEnt)))
+    (if (and obj (not (vl-catch-all-error-p obj)))
+      (progn
+        (if (mlstyle-exists-p mlStyle)
+          (vl-catch-all-apply 'vlax-put-property (list obj 'StyleName mlStyle)))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'Layer mlLayer))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'ScaleFactor 1.0))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'ContentType 2))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'TextString str))
+        (if (tblsearch "STYLE" txtStyle)
+          (vl-catch-all-apply 'vlax-put-property (list obj 'TextStyleName txtStyle)))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'ArrowheadSize mlArrowSize))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'DoglegLength mlLandDist))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'LandingGap mlLandGap))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'TextHeight txtHgt))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'TextLeftAttachmentType 1))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'TextRightAttachmentType 1))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'TextJustify (if (= (strcase mlJustify) "LEFT") 1 3)))
+        (vl-catch-all-apply 'vlax-put-property (list obj 'TextRotation 0.0))
+        (vl-catch-all-apply 'vla-update (list obj))
+      )
+    )
+    (force-mleader-text newEnt str)
+  )
 
   (defun text-blocked-p (pt / h ss)
     (setq h (* txtHgt 2.0))
@@ -197,9 +248,10 @@
     (if ss T nil))
 
   ;; -------------------------------------------------------------------------
-  ;; NATIVE WCS MLEADER GENERATION
+  ;; DUAL-ENGINE MULTILEADER GENERATOR (Works in ALL Drawings & UCS States)
   ;; -------------------------------------------------------------------------
-  (defun make-il-mleader (sPt / last0 newEnt ed ok perpAng arrowPt cornerPt dx p2_wcs obj)
+  (defun make-il-mleader (sPt / last0 newEnt ok perpAng arrowPt cornerPt dx p1_ucs p2_ucs
+                                doc space ptsArr mlObj dogDir)
     (setq last0 (entlast) ok nil)
     (ensure-mlstyle mlStyle)
     (if (mlstyle-exists-p mlStyle)
@@ -209,50 +261,63 @@
                     (- txtAngRad (/ pi 2.0))
                     (+ txtAngRad (/ pi 2.0))))
 
-    (setq arrowPt (polar sPt perpAng sumpRad))
-    (setq cornerPt (polar arrowPt perpAng mlLeadLen))
+    (setq arrowPt  (polar sPt perpAng sumpRad)
+          cornerPt (polar arrowPt perpAng mlLeadLen)
+          dx       (if (= (strcase mlJustify) "LEFT") 10.0 -10.0))
 
-    (setq dx (if (= (strcase mlJustify) "LEFT") 10.0 -10.0))
-    (setq p2_wcs (list (+ (car cornerPt) dx) (cadr cornerPt) 0.0))
-
-    (setvar "CLAYER" mlLayer)
-    (command "_.MLEADER" "_NON" arrowPt "_NON" p2_wcs mlText "")
+    ;; Engine 1: Try UCS-translated _.MLEADER command
+    (setq p1_ucs (trans arrowPt 0 1)
+          p2_ucs (trans (list (+ (car cornerPt) dx) (cadr cornerPt) 0.0) 0 1))
+    (vl-catch-all-apply 'setvar (list "CLAYER" mlLayer))
+    (command "_.MLEADER" "_NON" p1_ucs "_NON" p2_ucs mlText "")
     (while (> (getvar "CMDACTIVE") 0) (command ""))
 
     (setq newEnt (entlast))
-    (if (and newEnt (not (equal newEnt last0)))
+    (if (and newEnt (not (equal newEnt last0)) (= (cdr (assoc 0 (entget newEnt))) "MULTILEADER"))
       (progn
-        (setq ed (entget newEnt))
-        (if (= (cdr (assoc 0 ed)) "MULTILEADER")
+        (style-mleader-obj newEnt mlText)
+        (setq stepEnts (cons newEnt stepEnts) ok T)
+      )
+    )
+
+    ;; Engine 2: If command _.MLEADER failed in this drawing, create MULTILEADER via ActiveX vla-AddMLeader
+    (if (not ok)
+      (progn
+        (setq doc (vl-catch-all-apply 'vla-get-ActiveDocument (list (vlax-get-acad-object))))
+        (if (and doc (not (vl-catch-all-error-p doc)))
           (progn
-            (entmod (subst (cons 8 mlLayer) (assoc 8 ed) ed))
-            (vl-catch-all-apply
-              '(lambda ()
-                 (setq obj (vlax-ename->vla-object newEnt))
-                 (if (vlax-property-available-p obj 'StyleName T)
-                   (vlax-put-property obj 'StyleName mlStyle))
-                 (if (vlax-property-available-p obj 'Layer T)
-                   (vlax-put-property obj 'Layer mlLayer))
-                 (if (vlax-property-available-p obj 'ArrowheadSize T)
-                   (vlax-put-property obj 'ArrowheadSize mlArrowSize))
-                 (if (vlax-property-available-p obj 'DoglegLength T)
-                   (vlax-put-property obj 'DoglegLength mlLandDist))
-                 (if (vlax-property-available-p obj 'LandingGap T)
-                   (vlax-put-property obj 'LandingGap mlLandGap))
-                 (if (vlax-property-available-p obj 'TextHeight T)
-                   (vlax-put-property obj 'TextHeight txtHgt))
-                 (if (vlax-property-available-p obj 'TextLeftAttachmentType T)
-                   (vlax-put-property obj 'TextLeftAttachmentType 1))
-                 (if (vlax-property-available-p obj 'TextRightAttachmentType T)
-                   (vlax-put-property obj 'TextRightAttachmentType 1))
-                 (if (vlax-property-available-p obj 'TextJustify T)
-                   (vlax-put-property obj 'TextJustify (if (= (strcase mlJustify) "LEFT") 1 3)))
-                 (if (vlax-property-available-p obj 'ScaleFactor T)
-                   (vlax-put-property obj 'ScaleFactor 1.0))
-                 (vla-update obj)))
-            (setq stepEnts (cons newEnt stepEnts) ok T)))))
+            (setq space (if (= (getvar "CVPORT") 1)
+                          (vl-catch-all-apply 'vla-get-PaperSpace (list doc))
+                          (vl-catch-all-apply 'vla-get-ModelSpace (list doc))))
+            (if (and space (not (vl-catch-all-error-p space)))
+              (progn
+                (setq ptsArr (vlax-make-safearray vlax-vbDouble '(0 . 5)))
+                (vlax-safearray-fill ptsArr
+                  (list (car arrowPt) (cadr arrowPt) 0.0
+                        (+ (car cornerPt) dx) (cadr cornerPt) 0.0))
+                (setq mlObj (vl-catch-all-apply 'vla-AddMLeader (list space ptsArr 0)))
+                (if (and mlObj (not (vl-catch-all-error-p mlObj)))
+                  (progn
+                    (setq dogDir (vlax-3d-point (list (if (= (strcase mlJustify) "LEFT") 1.0 -1.0) 0.0 0.0)))
+                    (vl-catch-all-apply 'vla-SetDoglegDirection (list mlObj 0 dogDir))
+                    (setq newEnt (vlax-vla-object->ename mlObj))
+                    (if newEnt
+                      (progn
+                        (style-mleader-obj newEnt mlText)
+                        (setq stepEnts (cons newEnt stepEnts) ok T)
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
     ok)
 
+  ;; Fixed Fallback (Includes required 100 AcDbLine codes & valid txtStyle)
   (defun make-il-basic (sPt / perpAng arrowPt cornerPt landPt txtPt jCode aP1 aP2 rotAng)
     (setq perpAng (if (= (strcase mlSide) "RIGHT")
                     (- txtAngRad (/ pi 2.0))
@@ -260,7 +325,8 @@
     (setq arrowPt  (polar sPt perpAng sumpRad)
           cornerPt (polar arrowPt perpAng mlLeadLen))
 
-    (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 arrowPt) (cons 11 cornerPt)))
+    (mk (list '(0 . "LINE") '(100 . "AcDbEntity") '(100 . "AcDbLine")
+              (cons 8 mlLayer) (cons 10 arrowPt) (cons 11 cornerPt)))
 
     (setq aP1 (polar arrowPt (+ perpAng (* pi 0.85)) (* mlArrowSize 0.4))
           aP2 (polar arrowPt (- perpAng (* pi 0.85)) (* mlArrowSize 0.4)))
@@ -272,20 +338,19 @@
 
     (setq rotAng 0.0)
     (if (= (strcase mlJustify) "LEFT")
-      (progn
-        (setq landPt (polar cornerPt 0.0 mlLandDist)
-              txtPt  (polar landPt 0.0 mlLandGap)
-              jCode  1)) 
-      (progn
-        (setq landPt (polar cornerPt pi mlLandDist)
-              txtPt  (polar landPt pi mlLandGap)
-              jCode  3))) 
+      (setq landPt (polar cornerPt 0.0 mlLandDist)
+            txtPt  (polar landPt 0.0 mlLandGap)
+            jCode  1)
+      (setq landPt (polar cornerPt pi mlLandDist)
+            txtPt  (polar landPt pi mlLandGap)
+            jCode  3))
 
-    (mk (list '(0 . "LINE") (cons 8 mlLayer) (cons 10 cornerPt) (cons 11 landPt)))
+    (mk (list '(0 . "LINE") '(100 . "AcDbEntity") '(100 . "AcDbLine")
+              (cons 8 mlLayer) (cons 10 cornerPt) (cons 11 landPt)))
     (mk (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 mlLayer) '(100 . "AcDbMText")
               (list 10 (car txtPt) (cadr txtPt) 0.0)
               (cons 40 txtHgt) (cons 41 0.0)
-              (cons 71 jCode) '(72 . 1) (cons 7 mlStyle) (cons 50 rotAng)
+              (cons 71 jCode) '(72 . 1) (cons 7 txtStyle) (cons 50 rotAng)
               (list 11 (cos rotAng) (sin rotAng) 0.0)
               (cons 1 mlText))))
 
@@ -308,10 +373,8 @@
   (ensure-layer textLayer  textColor)
   (ensure-layer mlLayer    textColor)
 
-  (if (not (tblsearch "STYLE" txtStyle))
-    (entmake (list '(0 . "STYLE") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbTextStyleTableRecord")
-                   (cons 2 txtStyle) '(70 . 0) '(40 . 0.0) (cons 41 txtWidth) '(50 . 0.0)
-                   '(71 . 0) '(3 . "romans.shx") '(4 . ""))))
+  (ensure-textstyle txtStyle txtWidth)
+  (ensure-textstyle mlStyle  txtWidth)
 
   (initget "Yes No")
   (setq askInfo (getkword "\nEnter custom drain details? [Yes/No] <No>: "))
@@ -333,7 +396,7 @@
 
   (while loop
     (initget "Side Justify Undo")
-    (setq pt1 (getpoint (strcat "\nClick Start Point of Drain [Side/Justify/Undo] <Exit> (Side:" mlSide ", Justify:" mlJustify "): ")))
+    (setq pt1 (getpoint (strcat "\nClick Start Point of Drain [Side/Justify/Undo] <Exit> (Next:" currCode ", Side:" mlSide ", Justify:" mlJustify "): ")))
     (cond
       ((null pt1) (setq loop nil))
 
@@ -413,10 +476,7 @@
                            (list 10 (car segMid) (cadr segMid))
                            (list 10 (car arrowP2) (cadr arrowP2))))
 
-                 ;; -------------------------------------------------------------
-                 ;; DYNAMIC TEXT: Automatically formats sequence and details
-                 ;; -------------------------------------------------------------
-                 (setq strCode (if (and currCode (/= currCode "")) (strcat currCode ";\\P") ""))
+                 (setq strCode       (if (and currCode (/= currCode "")) (strcat currCode ";\\P") ""))
                  (setq strCodeInline (if (and currCode (/= currCode "")) (strcat currCode "; ") ""))
 
                  (cond
@@ -446,8 +506,7 @@
                            (cons 1 mtextStr) (cons 7 txtStyle)
                            (cons 50 finalTxtAng) (list 11 (cos finalTxtAng) (sin finalTxtAng) 0.0)
                            '(73 . 1) '(44 . 0.8)))
-                 
-                 ;; Auto-Sequence the Code for the next segment drawn
+
                  (if (and currCode (/= currCode ""))
                    (setq currCode (next-seq currCode)))
                    
