@@ -3,12 +3,12 @@
 ;;; MODULE      : pipec.lsp
 ;;; COMMAND     : PIPEC
 ;;; DESCRIPTION : Fully Automated Civil Road Drainage Network Generator
-;;;               (Universal Multi-Drawing SIL00.00 Multileader Engine)
+;;;               (LWPOLYLINE Drain Segments)
 ;;; ==========================================================================
 
-(defun c:pipec ( / *error* sysVars sysVals 
+(defun c:pipec ( / *error* sysVars sysVals ucsChanged
                    ;; --- settings ---
-                   drainLayer drainColor arrowLayer arrowColor arrowWidth
+                   drainLayer drainColor drainWidth arrowLayer arrowColor arrowWidth
                    sumpLayer sumpColor sumpRad textLayer textColor txtHgt txtStyle txtWidth
                    mlLayer mlStyle mlText mlJustify mlSide mlLeadLen mlLandDist mlArrowSize mlLandGap
                    ilMode unitsPerM maxSegM defCode defSize defGrad pipeTextRot0
@@ -19,7 +19,7 @@
                    distAbove distBelow pTextAbove pTextBelow
                    blockedAbove blockedBelow history stepEnts lastStep loop sumpCache silCache e
                    ;; --- local helper functions ---
-                   ensure-layer ensure-textstyle esc-filter pt2d near-p mk next-seq
+                   restore-session ensure-layer ensure-textstyle esc-filter pt2d near-p mk next-seq
                    scan-sumps scan-sils mlstyle-exists-p ensure-mlstyle force-mleader-text
                    style-mleader-obj text-blocked-p make-il make-il-mleader make-il-basic)
 
@@ -31,6 +31,7 @@
 
   (setq drainLayer "#JRK - RD Drain Line")
   (setq drainColor 4)
+  (setq drainWidth 0.0)        ;; Polyline width for drainage line
 
   (setq arrowLayer "#JRK - RD Drain FLOW")
   (setq arrowColor 4)
@@ -51,7 +52,7 @@
   (setq mlText      "{\\W0.5;SIL00.00}")   
   (setq mlJustify   "Right")               
   (setq mlSide      "Right")               
-  (setq mlLeadLen   3000.0)                
+  (setq mlLeadLen   6000.0)    ;; Increased from 3000.0 so MLeader sits farther out
   (setq mlLandDist  2000.0)                
   (setq mlArrowSize 2000.0)                
   (setq mlLandGap   1000.0)                
@@ -65,8 +66,21 @@
   ;; =========================================================================
 
   (vl-load-com)
-  (setq sysVars '("CMDECHO" "CMLEADERSTYLE" "CLAYER")
-        sysVals (mapcar 'getvar sysVars))
+  (setq sysVars    '("CMDECHO" "CMLEADERSTYLE" "CLAYER" "UCSFOLLOW")
+        sysVals    (mapcar 'getvar sysVars)
+        ucsChanged nil)
+
+  ;; Helper to restore UCS to Previous and reset system variables
+  (defun restore-session ()
+    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
+    (if ucsChanged
+      (progn
+        (command "_.UCS" "_Previous")
+        (setq ucsChanged nil)
+      )
+    )
+    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+  )
 
   ;; Ensure layer exists AND is thawed, turned ON, and unlocked in any drawing
   (defun ensure-layer (nm col)
@@ -360,13 +374,25 @@
     (if (not ok) (make-il-basic sPt)))
 
   (defun *error* (msg)
-    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
-    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+    (restore-session)
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
       (princ (strcat "\nAction Cancelled: " msg)))
     (princ))
 
+  ;; -------------------------------------------------------------------------
+  ;; INITIALIZE LAYERS, STYLES & SWITCH UCS TO WORLD
+  ;; -------------------------------------------------------------------------
   (setvar "CMDECHO" 0)
+  (setvar "UCSFOLLOW" 0)
+
+  ;; Switch to World UCS if currently in a custom/rotated UCS
+  (if (= (getvar "WORLDUCS") 0)
+    (progn
+      (command "_.UCS" "_World")
+      (setq ucsChanged T)
+    )
+  )
+
   (ensure-layer drainLayer drainColor)
   (ensure-layer arrowLayer arrowColor)
   (ensure-layer sumpLayer  sumpColor)
@@ -463,10 +489,11 @@
                        linePt1 (polar pA ang sumpRad)
                        linePt2 (polar pB (+ ang pi) sumpRad))
 
-                 (mk (list '(0 . "LINE") '(100 . "AcDbEntity") '(100 . "AcDbLine")
-                           (cons 8 drainLayer)
-                           (list 10 (car linePt1) (cadr linePt1) 0.0)
-                           (list 11 (car linePt2) (cadr linePt2) 0.0)))
+                 ;; Drainage Line created as LWPOLYLINE
+                 (mk (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 drainLayer)
+                           '(100 . "AcDbPolyline") '(90 . 2) '(70 . 0) (cons 43 drainWidth)
+                           (list 10 (car linePt1) (cadr linePt1))
+                           (list 10 (car linePt2) (cadr linePt2))))
 
                  (setq arrowP1 (polar segMid (+ ang (* pi 0.85)) arrowSize)
                        arrowP2 (polar segMid (- ang (* pi 0.85)) arrowSize))
@@ -514,10 +541,11 @@
 
                (setq history (cons (cons stepEnts prevCode) history))
                (if (> numSeg 1)
-                 (princ (strcat "\nSuccess! Auto-split into " (itoa numSeg) " segments."))
-                 (princ "\nSuccess! Pipe generated."))))))))
+                 (princ (strcat "\nSuccess! Auto-split into " (itoa numSeg) " polyline segments."))
+                 (princ "\nSuccess! Drain polyline generated."))))))))
   )
 
-  (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+  ;; Restore previous UCS and system variables upon exit
+  (restore-session)
   (princ)
 )

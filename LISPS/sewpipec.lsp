@@ -3,12 +3,11 @@
 ;;; MODULE      : sewpipec.lsp
 ;;; COMMAND     : SEWPIPEC
 ;;; DESCRIPTION : Fully Automated Civil Sewer Reticulation Generator
-;;;               (Universal Multi-Drawing MH Multileader Engine)
 ;;; ==========================================================================
 
-(defun c:sewpipec ( / *error* sysVars sysVals 
+(defun c:sewpipec ( / *error* sysVars sysVals ucsChanged
                    ;; --- settings ---
-                   drainLayer drainColor arrowLayer arrowColor arrowWidth
+                   drainLayer drainColor drainWidth arrowLayer arrowColor arrowWidth
                    sumpLayer sumpColor sumpRad textLayer textColor txtHgt txtStyle txtWidth
                    mlLayer mlStyle mlJustify mlSide mlLeadLen mlLandDist mlArrowSize mlLandGap
                    ilMode unitsPerM maxSegM defMat defSize defGrad defMh pipeTextRot0
@@ -19,7 +18,7 @@
                    distAbove distBelow pTextAbove pTextBelow
                    blockedAbove blockedBelow history stepEnts lastStep loop sumpCache silCache e placedIL
                    ;; --- local helper functions ---
-                   ensure-layer ensure-textstyle esc-filter pt2d near-p mk next-seq
+                   restore-session ensure-layer ensure-textstyle esc-filter pt2d near-p mk next-seq
                    scan-sumps scan-sils mlstyle-exists-p ensure-mlstyle force-mleader-text
                    style-mleader-obj text-blocked-p make-il make-il-mleader make-il-basic)
 
@@ -31,6 +30,7 @@
 
   (setq drainLayer "#JRK - Sewer Line VCP")
   (setq drainColor 4)          
+  (setq drainWidth 0.0)        ;; Polyline width for sewer line
 
   (setq arrowLayer "#JRK - Sewer FLOW")
   (setq arrowColor 2)          
@@ -50,7 +50,7 @@
   (setq mlStyle     "750-T2")              
   (setq mlJustify   "Right")               
   (setq mlSide      "Right")               
-  (setq mlLeadLen   15000.0)               
+  (setq mlLeadLen   20000.0)   
   (setq mlLandDist  1000.0)                
   (setq mlArrowSize 1000.0)                
   (setq mlLandGap   500.0)                 
@@ -65,8 +65,21 @@
   ;; =========================================================================
 
   (vl-load-com)
-  (setq sysVars '("CMDECHO" "CMLEADERSTYLE" "CLAYER")
-        sysVals (mapcar 'getvar sysVars))
+  (setq sysVars    '("CMDECHO" "CMLEADERSTYLE" "CLAYER" "UCSFOLLOW")
+        sysVals    (mapcar 'getvar sysVars)
+        ucsChanged nil)
+
+  ;; Helper to restore UCS to Previous and reset system variables
+  (defun restore-session ()
+    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
+    (if ucsChanged
+      (progn
+        (command "_.UCS" "_Previous")
+        (setq ucsChanged nil)
+      )
+    )
+    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+  )
 
   ;; Ensure layer exists AND is thawed, turned ON, and unlocked in any drawing
   (defun ensure-layer (nm col)
@@ -352,13 +365,25 @@
     (if (not ok) (make-il-basic sPt mhTxt)))
 
   (defun *error* (msg)
-    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
-    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+    (restore-session)
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
       (princ (strcat "\nAction Cancelled: " msg)))
     (princ))
 
+  ;; -------------------------------------------------------------------------
+  ;; INITIALIZE LAYERS, STYLES & SWITCH UCS TO WORLD
+  ;; -------------------------------------------------------------------------
   (setvar "CMDECHO" 0)
+  (setvar "UCSFOLLOW" 0)
+
+  ;; Switch to World UCS if currently in a custom/rotated UCS
+  (if (= (getvar "WORLDUCS") 0)
+    (progn
+      (command "_.UCS" "_World")
+      (setq ucsChanged T)
+    )
+  )
+
   (ensure-layer drainLayer drainColor)
   (ensure-layer arrowLayer arrowColor)
   (ensure-layer sumpLayer  sumpColor)
@@ -461,10 +486,11 @@
                        linePt1 (polar pA ang sumpRad)
                        linePt2 (polar pB (+ ang pi) sumpRad))
 
-                 (mk (list '(0 . "LINE") '(100 . "AcDbEntity") '(100 . "AcDbLine")
-                           (cons 8 drainLayer)
-                           (list 10 (car linePt1) (cadr linePt1) 0.0)
-                           (list 11 (car linePt2) (cadr linePt2) 0.0)))
+                 ;; Sewer Line created as LWPOLYLINE
+                 (mk (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 drainLayer)
+                           '(100 . "AcDbPolyline") '(90 . 2) '(70 . 0) (cons 43 drainWidth)
+                           (list 10 (car linePt1) (cadr linePt1))
+                           (list 10 (car linePt2) (cadr linePt2))))
 
                  (setq arrowP1 (polar segMid (+ ang (* pi 0.85)) arrowSize)
                        arrowP2 (polar segMid (- ang (* pi 0.85)) arrowSize))
@@ -508,10 +534,11 @@
 
                (setq history (cons (cons stepEnts prevMh) history))
                (if (> numSeg 1)
-                 (princ (strcat "\nSuccess! Auto-split into " (itoa numSeg) " segments."))
-                 (princ "\nSuccess! Sewer generated."))))))))
+                 (princ (strcat "\nSuccess! Auto-split into " (itoa numSeg) " polyline segments."))
+                 (princ "\nSuccess! Sewer polyline generated."))))))))
   )
 
-  (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+  ;; Restore previous UCS and system variables upon exit
+  (restore-session)
   (princ)
 )

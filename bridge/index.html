@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JRK AutoCAD Smart XLS-to-CSV Bridge | Engineering MTEXT Formatter</title>
+  <title>JRK AutoCAD Smart XLS-to-CSV Bridge | CSVUPDATE & SEWSECTION Suite</title>
   
-  <!-- Google Fonts: Inter, JetBrains Mono & Libre Baskerville (for JRK Logo) -->
+  <!-- Google Fonts: Inter, JetBrains Mono & Libre Baskerville -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,700&display=swap" rel="stylesheet">
@@ -140,6 +140,13 @@
     html.light .text-purple-300 {
       color: #6b21a8 !important;
     }
+    html.light .bg-fuchsia-950\/50 {
+      background-color: rgba(217, 70, 239, 0.12) !important;
+    }
+    html.light .text-fuchsia-300,
+    html.light .text-fuchsia-400 {
+      color: #a21caf !important;
+    }
 
     /* Custom scrollbars */
     ::-webkit-scrollbar {
@@ -188,9 +195,17 @@
       mediumPipeThreshold: 14,
       smartLengthFormatting: true,
       cleanGradientPrefix: true,
+      // SEWSECTION settings
+      secHorScale: 1000,
+      secVerScale: 200,
+      secMaxDist: 200,
+      secAutoDatum: true,
+      secBaseDatumUnder10: 2,
+      secManualDatum: 0,
+      secSplitMode: 'CROSS', // 'CROSS' = split at MH >= 200m, 'STRICT' = split before exceeding 200m
     };
 
-    // Realistic Demo Datasets for 1-Click Testing (Including Duplicate IDs to test Lowest IL logic)
+    // Realistic Demo Datasets for 1-Click Testing
     const DEMO_DRAINAGE_DATA = [
       { 'Drain Name': '1A', 'U-Drain Width / Ø': '600', 'Length': 4.5, 'Grade': '1000', 'Invert Level (Upstream)': '8.70', 'Invert Level (Downstream)': '8.55' },
       { 'Drain Name': '1B', 'U-Drain Width / Ø': '600', 'Length': 6.0, 'Grade': '1000', 'Invert Level (Upstream)': '8.55', 'Invert Level (Downstream)': '8.40' },
@@ -202,14 +217,17 @@
     ];
 
     const DEMO_SEWERAGE_DATA = [
-      { 'Manhole No.': 'MH-01', 'Ground Level': '34.50', 'Invert Level': '32.10', 'Depth of Manhole': '2.40' },
-      { 'Manhole No.': 'MH-02', 'Ground Level': '34.20', 'Invert Level': '31.85', 'Depth of Manhole': '2.35' },
-      { 'Manhole No.': 'MH-02', 'Ground Level': '34.20', 'Invert Level': '31.60', 'Depth of Manhole': '2.60' },
-      { 'Manhole No.': 'MH-03', 'Ground Level': '33.85', 'Invert Level': '30.95', 'Depth of Manhole': '2.90' },
-      { 'Manhole No.': 'MH-04', 'Ground Level': '33.40', 'Invert Level': '30.10', 'Depth of Manhole': '3.30' },
-      { 'Manhole No.': 'MH-05', 'Ground Level': '32.90', 'Invert Level': '29.20', 'Depth of Manhole': '3.70' },
-      { 'Manhole No.': 'MH-06', 'Ground Level': '32.10', 'Invert Level': '28.50', 'Depth of Manhole': '3.60' },
-      { 'Manhole No.': 'MH-06', 'Ground Level': '32.10', 'Invert Level': '28.00', 'Depth of Manhole': '4.10' },
+      { 'Manhole No.': 'MH1', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.60', 'Invert Level': '4.74', 'Depth of Manhole': '1.86', 'Backdrop': '' },
+      { 'Manhole No.': 'MH2', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.75', 'Invert Level': '4.52', 'Depth of Manhole': '2.23', 'Backdrop': '' },
+      { 'Manhole No.': 'MH3', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.65', 'Invert Level': '4.30', 'Depth of Manhole': '2.35', 'Backdrop': '' },
+      { 'Manhole No.': 'MH4', 'Length': '27', 'Pipe Size': '225', 'Gradient': '204', 'Pipe Type': 'VCP', 'Ground Level': '6.50', 'Invert Level': '4.08', 'Depth of Manhole': '2.42', 'Backdrop': '' },
+      { 'Manhole No.': 'MH8', 'Length': '',   'Pipe Size': '',    'Gradient': '',    'Pipe Type': '',    'Ground Level': '6.40', 'Invert Level': '3.62', 'Depth of Manhole': '2.78', 'Backdrop': '0.33' },
+      { 'Manhole No.': 'MH21', 'Length': '55', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '16.00', 'Invert Level': '14.12', 'Depth of Manhole': '1.88', 'Backdrop': '' },
+      { 'Manhole No.': 'MH26', 'Length': '9',  'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.80', 'Invert Level': '13.93', 'Depth of Manhole': '1.87', 'Backdrop': '' },
+      { 'Manhole No.': 'MH27', 'Length': '39', 'Pipe Size': '375', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '15.80', 'Invert Level': '13.91', 'Depth of Manhole': '1.89', 'Backdrop': '' },
+      { 'Manhole No.': 'MH28', 'Length': '12', 'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.70', 'Invert Level': '13.78', 'Depth of Manhole': '1.92', 'Backdrop': '' },
+      { 'Manhole No.': 'MH30', 'Length': '19', 'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.70', 'Invert Level': '13.75', 'Depth of Manhole': '1.95', 'Backdrop': '' },
+      { 'Manhole No.': 'MH36', 'Length': '',   'Pipe Size': '',    'Gradient': '',    'Pipe Type': '',    'Ground Level': '15.55', 'Invert Level': '13.70', 'Depth of Manhole': '1.85', 'Backdrop': '' },
     ];
 
     const DEMO_MIXED_DATA = [
@@ -254,7 +272,11 @@
         } catch (e) {}
       }, [theme]);
 
-      // 1. Settings state
+      // 1. Target AutoCAD LISP Tool State ('CSVUPDATE' or 'SEWSECTION')
+      const [targetTool, setTargetTool] = useState('CSVUPDATE');
+      const [activeSecIdx, setActiveSecIdx] = useState(0);
+
+      // 2. Settings state
       const [settings, setSettings] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -279,40 +301,40 @@
         setIsFeedbackOpen(false);
       };
 
-      // 2. Excel Parsing States
+      // 3. Excel Parsing States
       const [fileInfo, setFileInfo] = useState(null);
       const [activeSheet, setActiveSheet] = useState('');
       const [workbook, setWorkbook] = useState(null);
       const [rawRows, setRawRows] = useState([]);
       const [columns, setColumns] = useState([]);
 
-      // 3. Smart Column Mapping State
+      // 4. Smart Column Mapping State (Includes Pipe Type & Backdrop for SEWSECTION)
       const [columnMap, setColumnMap] = useState({
         drainId: '',
-        drainIdSub: '', // Optional adjacent sub-ID column (e.g. '1' + 'A' -> '1A')
+        drainIdSub: '',
         size: '',
         length: '',
         gradient: '',
         drainIlUp: '',
         drainIlDown: '',
         sewerId: '',
-        sewerIdSub: '', // Optional adjacent number column (e.g. 'MH' + '1' -> 'MH-01')
+        sewerIdSub: '',
         gl: '',
         il: '',
         depth: '',
+        pipeType: '',
+        backdrop: '',
       });
 
-      // Smart Auto-Detected Mode ('DRAINAGE', 'SEWERAGE', 'HYBRID')
       const [detectedMode, setDetectedMode] = useState('DRAINAGE');
-      // User-Selected Mode Override ('AUTO', 'DRAINAGE', 'SEWERAGE', 'HYBRID')
       const [userDesignMode, setUserDesignMode] = useState('AUTO');
-      // Confidence score details for UI transparency
       const [detectionReason, setDetectionReason] = useState('Ready for upload');
 
-      // Effective mode combines Smart Auto-Detection with User Override
-      const effectiveMode = userDesignMode === 'AUTO' ? detectedMode : userDesignMode;
+      const effectiveMode = targetTool === 'SEWSECTION'
+        ? 'SEWERAGE'
+        : (userDesignMode === 'AUTO' ? detectedMode : userDesignMode);
 
-      // 4. UI search & filter
+      // 5. UI search & filter
       const [searchTerm, setSearchTerm] = useState('');
       const [filterCategory, setFilterCategory] = useState('ALL');
       const [toastMsg, setToastMsg] = useState(null);
@@ -347,6 +369,8 @@
           gl: '',
           il: '',
           depth: '',
+          pipeType: '',
+          backdrop: '',
         };
 
         const drainRules = {
@@ -394,6 +418,14 @@
             /^(depth\s*of\s*manhole|depth|mh\s*depth|manhole\s*depth|drop|depth\s*\(m\)|depth\s*\(\s*downstream\s*\))$/i,
             /(depth)/i,
           ],
+          pipeType: [
+            /^(pipe\s*type|type\s*of\s*pipe|material|pipe\s*material|mat)$/i,
+            /(pipe\s*type|material)/i,
+          ],
+          backdrop: [
+            /^(backdrop|b\/d\s*il|b\/d|drop\s*height)$/i,
+            /(backdrop|b\/d)/i,
+          ],
         };
 
         Object.entries(drainRules).forEach(([field, patterns]) => {
@@ -416,15 +448,13 @@
           }
         });
 
-        // Fallback generic ID
         const genericId = headerList.find(h => /^(id|no\.?|name)$/i.test(String(h).trim()));
         if (genericId) {
           if (!mapping.drainId) mapping.drainId = genericId;
           if (!mapping.sewerId) mapping.sewerId = genericId;
         }
 
-        // Row-Content ID Detector: If 'Manhole No.' was in a merged cell above the header row,
-        // inspect the first 3 columns across the data rows to find where "MH" + numbers live!
+        // Row-Content ID Detector for merged JRK 'Manhole No.' headers
         if (sampleRows.length > 0 && headerList.length >= 2) {
           const c0 = headerList[0];
           const c1 = headerList[1];
@@ -436,7 +466,6 @@
           }
         }
 
-        // JRK Merged-Cell Fallback if first column is __EMPTY
         if (!mapping.drainId && !mapping.sewerId && headerList.length > 0) {
           const firstCol = headerList[0];
           if (firstCol && /empty/i.test(firstCol)) {
@@ -445,12 +474,9 @@
           }
         }
 
-        // Cross-fill IDs so switching between Drainage & Sewerage mode always has an ID column ready
         if (!mapping.drainId && mapping.sewerId) mapping.drainId = mapping.sewerId;
         if (!mapping.sewerId && mapping.drainId) mapping.sewerId = mapping.drainId;
 
-        // Detect Split ID Columns in JRK Templates:
-        // Case 1 (Sewerage): Col A ('Manhole No.') = "MH", Col B ('__EMPTY') = "1", "2", "3"
         if (mapping.sewerId && !mapping.sewerIdSub && sampleRows.length > 0) {
           const sIdx = headerList.indexOf(mapping.sewerId);
           if (sIdx !== -1 && sIdx + 1 < headerList.length) {
@@ -464,7 +490,6 @@
           }
         }
 
-        // Case 2 (Drainage): Col B ('Drain Name') = "1", Col C ('__EMPTY_1') = "A", "B", "C"
         if (mapping.drainId && !mapping.drainIdSub && sampleRows.length > 0) {
           const dIdx = headerList.indexOf(mapping.drainId);
           if (dIdx !== -1 && dIdx + 1 < headerList.length) {
@@ -478,15 +503,12 @@
           }
         }
 
-        // ───────────────────────────────────────────────────────────
-        // MULTI-SIGNAL SCORING ENGINE (SEWERAGE VS DRAINAGE)
-        // ───────────────────────────────────────────────────────────
+        // Multi-Signal Scoring (Sewerage vs Drainage)
         let sewScore = 0;
         let drnScore = 0;
         const reasons = [];
         const allContext = `${metaText} ${headerList.join(' ')}`.toLowerCase();
 
-        // 1. File / Sheet / Banner keywords
         if (/(sewer|sewage|iwk|manhole\s*no|manhole\s*details|sewer\s*pipe|population\s*\(pe\)|accumulative\s*pe|peak\s*factor|backdrop)/i.test(allContext)) {
           sewScore += 8;
           reasons.push('Sewerage/PE/Manhole headers');
@@ -496,11 +518,9 @@
           reasons.push('MSMA/Catchment/Drainage headers');
         }
 
-        // 2. Specific Column Header Signals
         if (headerList.some(h => /^manhole/i.test(String(h).trim()))) sewScore += 5;
         if (headerList.some(h => /^drain\s*name|pipe\s*id|u-?drain/i.test(String(h).trim()))) drnScore += 5;
 
-        // 3. Data Row Content Signals
         let mhRowCount = 0;
         let drainRowCount = 0;
         sampleRows.slice(0, 20).forEach(r => {
@@ -518,7 +538,6 @@
           reasons.push('Drain IDs in rows');
         }
 
-        // 4. Fallback to available column groups if scores are tied at 0
         const hasDrainCols = Boolean(mapping.size || mapping.length || mapping.gradient);
         const hasSewerCols = Boolean(mapping.gl || mapping.il || mapping.depth);
 
@@ -539,7 +558,7 @@
       };
 
       // ─────────────────────────────────────────────────────────────
-      // EXCEL FILE PARSING VIA SHEETJS (Auto-Finds Best Engineering Sheet)
+      // EXCEL FILE PARSING VIA SHEETJS
       // ─────────────────────────────────────────────────────────────
       const isEngineeringHeaderRow = (rowText) => {
         return (
@@ -563,8 +582,6 @@
             const data = new Uint8Array(e.target.result);
             const wb = XLSX.read(data, { type: 'array' });
 
-            // Smart Sheet Picker: Find the first sheet that contains a valid Drainage or Sewerage table
-            // (Skips blank cover sheets like 'DNI' or 'COPYPASTE')
             let bestSheet = wb.SheetNames[0];
             for (const sn of wb.SheetNames) {
               if (/^(dni|copypaste|cover|instruction)/i.test(sn.trim())) continue;
@@ -585,7 +602,8 @@
             });
 
             setActiveSheet(bestSheet);
-            setUserDesignMode('AUTO'); // Reset to Smart Auto on new file upload
+            setActiveSecIdx(0);
+            setUserDesignMode('AUTO');
             parseSheet(wb, bestSheet, file.name);
             showToast(`Loaded "${file.name}" (${bestSheet})!`);
           } catch (err) {
@@ -602,7 +620,6 @@
 
         const rawArray = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-        // Scan down to find the true engineering header row
         let headerRowIndex = 0;
         for (let i = 0; i < Math.min(rawArray.length, 35); i++) {
           const rowText = rawArray[i].join(' ').toLowerCase();
@@ -612,7 +629,6 @@
           }
         }
 
-        // Collect metadata text from the top letterhead/title rows to help the classifier
         const topBannerText = [
           fileNameOverride || (fileInfo ? fileInfo.name : ''),
           sheetName,
@@ -647,22 +663,26 @@
           data = DEMO_DRAINAGE_DATA;
           name = 'MSMA_Road_Drainage_Schedule.xlsx';
           headers = Object.keys(DEMO_DRAINAGE_DATA[0]);
-        } else if (type === 'sewerage') {
+        } else if (type === 'sewerage' || type === 'sewsection') {
           data = DEMO_SEWERAGE_DATA;
-          name = 'Sewer_Manhole_Schedule.xlsx';
+          name = 'JRK_Sewerage_LongSection_Calculation.xlsx';
           headers = Object.keys(DEMO_SEWERAGE_DATA[0]);
+          if (type === 'sewsection') {
+            setTargetTool('SEWSECTION');
+          }
         } else {
           data = DEMO_MIXED_DATA;
           name = 'Infrastructure_Combined_Schedule.xlsx';
           headers = Object.keys(DEMO_MIXED_DATA[0]);
         }
 
+        setActiveSecIdx(0);
         setUserDesignMode('AUTO');
         setColumns(headers);
         setRawRows(data);
         setFileInfo({
           name: `${name} (Sample)`,
-          size: '14.2 KB',
+          size: '14.8 KB',
           sheetNames: ['Schedule'],
         });
         setActiveSheet('Schedule');
@@ -675,13 +695,13 @@
         const wsDrain = XLSX.utils.json_to_sheet(DEMO_DRAINAGE_DATA);
         const wsSewer = XLSX.utils.json_to_sheet(DEMO_SEWERAGE_DATA);
         XLSX.utils.book_append_sheet(wb, wsDrain, 'Drainage_Pipes');
-        XLSX.utils.book_append_sheet(wb, wsSewer, 'Sewer_Manholes');
+        XLSX.utils.book_append_sheet(wb, wsSewer, 'Sewer_LongSection');
         XLSX.writeFile(wb, 'JRK_AutoCAD_Smart_Schedule_Template.xlsx');
         showToast('Downloaded: JRK_AutoCAD_Smart_Schedule_Template.xlsx');
       };
 
       // ─────────────────────────────────────────────────────────────
-      // AUTOCAD MTEXT STRING GENERATION ENGINE
+      // 1. CSVUPDATE ENGINE (Plan View MTEXT & Lowest IL Deduplication)
       // ─────────────────────────────────────────────────────────────
       const buildDrainageCadString = (id, size, length, gradient) => {
         const widthVal = parseFloat(settings.textWidthFactor) || 0.5;
@@ -737,7 +757,6 @@
       };
 
       const formatRow = (row) => {
-        // 1. Raw Data Extraction (with Split-Cell Merger support)
         let sewerIdRaw = String(row[columnMap.sewerId] || '').trim();
         if (columnMap.sewerIdSub) {
           const subVal = String(row[columnMap.sewerIdSub] || '').trim();
@@ -763,7 +782,6 @@
         let lengthRaw = String(row[columnMap.length] || '').trim();
         let gradRaw = String(row[columnMap.gradient] || '').trim();
 
-        // Check if 3-column split gradient ('1' | ':' | '200') is used in JRK Sewerage sheets
         if (gradRaw === '1' && columnMap.gradient) {
           const gIdx = columns.indexOf(columnMap.gradient);
           if (gIdx !== -1 && gIdx + 2 < columns.length) {
@@ -797,7 +815,6 @@
         }
         gradRaw = cleanNumber(gradRaw);
 
-        // Skip Unit Rows & Sub-Header Rows (e.g., 'ha', 'min', 'm3/s', 'PE FROM MH 1 TO MH 5')
         const rawIdCheck = (sewerIdRaw || drainIdRaw).toUpperCase();
         if (!rawIdCheck || rawIdCheck === 'D' || rawIdCheck === 'ID' || rawIdCheck === 'MANHOLE' || rawIdCheck.startsWith('PE FROM')) {
           return null;
@@ -808,7 +825,6 @@
 
         if (!hasSewerData && !hasDrainData) return null;
 
-        // Decide whether this row is formatted as SEWERAGE or DRAINAGE based on effectiveMode
         let isSewerRow = false;
         if (effectiveMode === 'SEWERAGE') {
           if (!hasSewerData) return null;
@@ -817,15 +833,11 @@
           if (!hasDrainData) return null;
           isSewerRow = false;
         } else {
-          // HYBRID / Dual mode: decide per row
           isSewerRow = hasSewerData && (!hasDrainData || /^MH/i.test(sewerIdRaw));
         }
 
         let effectiveId = isSewerRow ? (sewerIdRaw || drainIdRaw) : (drainIdRaw || sewerIdRaw);
 
-        // ====================================================================
-        // SMART ID SANITIZER: Standardizes messy Excel IDs to match CAD exactly
-        // ====================================================================
         if (isSewerRow) {
           if (/^\d+(\.0+)?$/.test(effectiveId)) {
             const cleanInt = effectiveId.replace(/\.0+$/, '');
@@ -841,11 +853,9 @@
             if (num.length === 1) effectiveId = `${letter}0${num}`;
           }
         }
-        // ====================================================================
 
         if (!effectiveId || effectiveId === '?') return null;
 
-        // Calculate Lowest Invert Level on this row (works for BOTH Sewerage and Drainage!)
         const candidateILs = [ilRaw, ilDownRaw, ilUpRaw]
           .map(v => parseFloat(v))
           .filter(n => !isNaN(n));
@@ -892,9 +902,6 @@
         }
       };
 
-      // ─────────────────────────────────────────────────────────────
-      // PROCESS ROWS & SMART LOWEST-IL DEDUPLICATION (SEWERAGE + DRAINAGE)
-      // ─────────────────────────────────────────────────────────────
       const processedRows = useMemo(() => {
         const rawFormatted = rawRows.map((r, i) => formatRow(r, i)).filter(Boolean);
         const uniqueMap = new Map();
@@ -905,8 +912,6 @@
           if (!uniqueMap.has(cleanId)) {
             uniqueMap.set(cleanId, { ...item, duplicateCount: 1 });
           } else {
-            // DUPLICATE ID FOUND (In Either Sewerage OR Drainage):
-            // Always compare Invert Levels and keep the record with the LOWEST Invert Level!
             const existing = uniqueMap.get(cleanId);
             const dupCount = (existing.duplicateCount || 1) + 1;
             const existingIL = existing.effectiveIL;
@@ -934,7 +939,6 @@
                 existing.conditionBadge = `Merged ${dupCount} Rows (Lowest IL: ${bestILText})`;
               }
             } else {
-              // DRAINAGE DUPLICATE: Also takes the row with the LOWEST Invert Level!
               if (newIsLower) {
                 const updatedItem = {
                   ...item,
@@ -957,7 +961,209 @@
         return Array.from(uniqueMap.values());
       }, [rawRows, columnMap, settings, effectiveMode]);
 
-      // Filtered rows for table view
+      // ─────────────────────────────────────────────────────────────
+      // 2. SEWSECTION ENGINE (Longitudinal Section Profile Chains & 200m Splitter)
+      // ─────────────────────────────────────────────────────────────
+      const computeSectionDatum = (nodes) => {
+        if (!settings.secAutoDatum) {
+          return parseFloat(settings.secManualDatum) || 0;
+        }
+        const minIL = Math.min(...nodes.map(n => n.ilOut));
+        const baseU10 = parseFloat(settings.secBaseDatumUnder10) || 0;
+        let dVal = minIL >= 10.0
+          ? Math.floor(minIL / 10.0) * 10.0 + baseU10
+          : baseU10;
+        if (dVal > minIL - 1.0) {
+          dVal = Math.max(0, Math.floor(minIL - 2.0));
+        }
+        return dVal;
+      };
+
+      const sewSections = useMemo(() => {
+        const limitM = parseFloat(settings.secMaxDist) || 200;
+        const splitMode = settings.secSplitMode || 'CROSS';
+        const allSections = [];
+        let curRun = [];
+        let pendingPipe = null;
+        let cumDist = 0.0;
+
+        const cleanNum = (val) => {
+          if (val === null || val === undefined) return NaN;
+          const s = String(val).trim();
+          if (!s || s === '-' || /#DIV|#REF|#VALUE|#N\/A/i.test(s)) return NaN;
+          const cleaned = s.replace(/[^0-9.-]/g, '');
+          return cleaned ? parseFloat(cleaned) : NaN;
+        };
+
+        const formatMhTag = (rawPrefix, rawSub) => {
+          const p = String(rawPrefix || '').trim().toUpperCase();
+          const sub = String(rawSub || '').trim();
+          if (p === 'MH' && sub && !isNaN(cleanNum(sub))) {
+            return `MH${Math.round(cleanNum(sub))}`;
+          }
+          if (/^MH/i.test(p)) {
+            const rest = p.replace(/^MH\s*[-_]?\s*/i, '');
+            if (!isNaN(cleanNum(rest))) return `MH${Math.round(cleanNum(rest))}`;
+            return `MH${rest}`;
+          }
+          if (p && !isNaN(cleanNum(p))) {
+            return `MH${Math.round(cleanNum(p))}`;
+          }
+          return '';
+        };
+
+        rawRows.forEach((row) => {
+          const rowValuesStr = Object.values(row).join(' ').toUpperCase();
+          // If row is an explicit branch header like "PE FROM MH 1 TO MH 5", close current non-connected run if needed
+          const rawA = row[columnMap.sewerId || columnMap.drainId];
+          const rawB = columnMap.sewerIdSub ? row[columnMap.sewerIdSub] : '';
+          const mhID = formatMhTag(rawA, rawB);
+
+          const lenVal = cleanNum(row[columnMap.length]);
+          const sizeVal = cleanNum(row[columnMap.size]);
+          const glVal = cleanNum(row[columnMap.gl]);
+          const ilVal = cleanNum(row[columnMap.il]);
+          const bdVal = cleanNum(row[columnMap.backdrop]);
+          let matVal = String(row[columnMap.pipeType] || '').trim().toUpperCase();
+          if (!matVal || matVal === '-') matVal = 'VCP';
+
+          // Parse gradient (handles "1:200", "200", or 3-col "1 | : | 200")
+          let gradRaw = String(row[columnMap.gradient] || '').trim();
+          if (gradRaw === '1' && columnMap.gradient) {
+            const gIdx = columns.indexOf(columnMap.gradient);
+            if (gIdx !== -1 && gIdx + 2 < columns.length) {
+              const colonCell = String(row[columns[gIdx + 1]] || '').trim();
+              const denomCell = String(row[columns[gIdx + 2]] || '').trim();
+              if (colonCell === ':' && !isNaN(cleanNum(denomCell))) {
+                gradRaw = denomCell;
+              }
+            }
+          }
+          gradRaw = gradRaw.replace(/^1\s*[:/]\s*/i, '');
+          const gradNum = cleanNum(gradRaw);
+          const gradStr = !isNaN(gradNum) && gradNum > 0 ? String(Math.round(gradNum)) : '200';
+          const sizeStr = !isNaN(sizeVal) && sizeVal > 0 ? String(Math.round(sizeVal)) : '225';
+
+          if (!mhID || isNaN(glVal) || isNaN(ilVal)) return;
+
+          // Case 1: Same Manhole ID as last node in curRun (Attaches outgoing pipe & checks Backdrop)
+          if (curRun.length > 0 && curRun[curRun.length - 1].id === mhID) {
+            const lastNode = curRun[curRun.length - 1];
+            if (ilVal < lastNode.ilIn - 0.005) {
+              lastNode.ilOut = ilVal;
+            }
+            if (!isNaN(bdVal) && bdVal > 0.005 && Math.abs(lastNode.ilIn - lastNode.ilOut) < 0.005) {
+              lastNode.ilIn = lastNode.ilOut + bdVal;
+            }
+            if (!isNaN(sizeVal) && sizeVal > 0) lastNode.size = sizeStr;
+            if (matVal) lastNode.mat = matVal;
+            if (!isNaN(gradNum) && gradNum > 0) lastNode.grad = gradStr;
+
+            if (!isNaN(lenVal) && lenVal > 0) {
+              lastNode.outLen = lenVal;
+              pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
+            }
+          }
+          // Case 2: Downstream Manhole arriving via pendingPipe
+          else if (curRun.length > 0 && pendingPipe) {
+            const nextDist = cumDist + pendingPipe.len;
+
+            if (splitMode === 'STRICT' && nextDist > limitM && curRun.length >= 2) {
+              allSections.push(curRun);
+              const prevLast = curRun[curRun.length - 1];
+              curRun = [{
+                ...prevLast,
+                dist: 0.0,
+                ilIn: prevLast.ilOut,
+                ilOut: prevLast.ilOut,
+              }];
+              cumDist = pendingPipe.len;
+            } else {
+              cumDist = nextDist;
+            }
+
+            const ilIn = (!isNaN(bdVal) && bdVal > 0.005) ? (ilVal + bdVal) : ilVal;
+            const newNode = {
+              id: mhID,
+              dist: cumDist,
+              gl: glVal,
+              ilIn,
+              ilOut: ilVal,
+              depth: glVal - ilVal,
+              bd: (!isNaN(bdVal) && bdVal > 0.005) ? bdVal : 0,
+              size: sizeStr,
+              mat: matVal,
+              grad: gradStr,
+              outLen: (!isNaN(lenVal) && lenVal > 0) ? lenVal : null,
+            };
+            curRun.push(newNode);
+
+            if (!isNaN(lenVal) && lenVal > 0) {
+              pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
+            } else {
+              pendingPipe = null;
+            }
+
+            if (splitMode === 'CROSS' && cumDist >= limitM && pendingPipe) {
+              allSections.push(curRun);
+              curRun = [{
+                ...newNode,
+                dist: 0.0,
+                ilIn: newNode.ilOut,
+                ilOut: newNode.ilOut,
+                bd: 0,
+              }];
+              cumDist = 0.0;
+            }
+          }
+          // Case 3: Start of a New Branch
+          else {
+            if (curRun.length >= 2) {
+              allSections.push(curRun);
+            }
+            cumDist = 0.0;
+            const ilIn = (!isNaN(bdVal) && bdVal > 0.005) ? (ilVal + bdVal) : ilVal;
+            const firstNode = {
+              id: mhID,
+              dist: 0.0,
+              gl: glVal,
+              ilIn,
+              ilOut: ilVal,
+              depth: glVal - ilVal,
+              bd: (!isNaN(bdVal) && bdVal > 0.005) ? bdVal : 0,
+              size: sizeStr,
+              mat: matVal,
+              grad: gradStr,
+              outLen: (!isNaN(lenVal) && lenVal > 0) ? lenVal : null,
+            };
+            curRun = [firstNode];
+            if (!isNaN(lenVal) && lenVal > 0) {
+              pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
+            } else {
+              pendingPipe = null;
+            }
+          }
+        });
+
+        if (curRun.length >= 2) {
+          allSections.push(curRun);
+        }
+
+        return allSections.map((nodes, idx) => {
+          const datum = computeSectionDatum(nodes);
+          const titleMHs = nodes.map(n => n.id).join(', ');
+          const totalLength = nodes[nodes.length - 1].dist;
+          return {
+            index: idx + 1,
+            title: `LONG. SECTION OF ${titleMHs}`,
+            datum,
+            totalLength,
+            nodes,
+          };
+        });
+      }, [rawRows, columnMap, columns, settings]);
+
+      // Filtered rows for CSVUPDATE table view
       const filteredRows = useMemo(() => {
         return processedRows.filter(item => {
           if (filterCategory === 'DRAINAGE' && item.category !== 'DRAINAGE') return false;
@@ -986,11 +1192,12 @@
         const medCount = processedRows.filter(r => r.conditionBadge.includes('Medium')).length;
         const longCount = processedRows.filter(r => r.conditionBadge.includes('Long') || r.conditionBadge.includes('OFF')).length;
         const mergedCount = processedRows.filter(r => r.duplicateCount > 1).length;
-        return { total, drainageCount, sewerageCount, shortCount, medCount, longCount, mergedCount };
-      }, [processedRows]);
+        const totalSecNodes = sewSections.reduce((acc, s) => acc + s.nodes.length, 0);
+        return { total, drainageCount, sewerageCount, shortCount, medCount, longCount, mergedCount, totalSecNodes };
+      }, [processedRows, sewSections]);
 
       // ─────────────────────────────────────────────────────────────
-      // CSV EXPORT ENGINES
+      // CSV EXPORT ENGINES (CSVUPDATE & SEWSECTION)
       // ─────────────────────────────────────────────────────────────
       const exportCSV = () => {
         if (processedRows.length === 0) {
@@ -1023,7 +1230,7 @@
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        showToast('Exported "AutoCAD_Smart_Raw.csv" (5-column format)!');
+        showToast('Exported "AutoCAD_Smart_Raw.csv" for CSVUPDATE!');
       };
 
       const exportMtextCSV = () => {
@@ -1050,6 +1257,52 @@
         showToast('Exported "AutoCAD_Smart_Import.csv" (2-column MTEXT)!');
       };
 
+      // Dedicated Exporter for SEWSECTION (sewsection.lsp)
+      const exportSewSectionCSV = () => {
+        if (sewSections.length === 0) {
+          alert('No valid Sewerage Longitudinal Section chains found to export.');
+          return;
+        }
+
+        const header = 'Manhole No.,Length,Pipe Size,Gradient,Pipe Type,Ground Level,Invert Level,Depth of Manhole,Backdrop';
+        const lines = [header];
+
+        sewSections.forEach((sec) => {
+          sec.nodes.forEach((node, nIdx) => {
+            const isLast = nIdx === sec.nodes.length - 1;
+            const nextNode = !isLast ? sec.nodes[nIdx + 1] : null;
+            const segLen = !isLast ? (nextNode.dist - node.dist) : '';
+            const bdDiff = node.ilIn - node.ilOut;
+            const bdStr = bdDiff > 0.005 ? bdDiff.toFixed(2) : '';
+            const depthVal = (node.gl - node.ilOut).toFixed(2);
+
+            lines.push([
+              escapeCSV(node.id),
+              escapeCSV(segLen !== '' ? Number(segLen.toFixed(2)) : ''),
+              escapeCSV(!isLast ? node.size : ''),
+              escapeCSV(!isLast ? node.grad : ''),
+              escapeCSV(!isLast ? node.mat : ''),
+              escapeCSV(node.gl.toFixed(2)),
+              escapeCSV(node.ilOut.toFixed(2)),
+              escapeCSV(depthVal),
+              escapeCSV(bdStr),
+            ].join(','));
+          });
+        });
+
+        const csvContent = lines.join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'AutoCAD_SewSection.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast(`Exported "AutoCAD_SewSection.csv" (${sewSections.length} Longitudinal Section(s))!`);
+      };
+
       const copyEntireCSV = () => {
         if (processedRows.length === 0) return;
         const csvContent = processedRows
@@ -1066,33 +1319,31 @@
         });
       };
 
+      const currentPreviewSection = sewSections[activeSecIdx] || sewSections[0] || null;
+
       return (
         <div className="flex flex-col min-h-screen">
           {/* ─────────────────────────────────────────────────────────
-              1. TOP HEADER BAR WITH JRK BRANDING & THEME TOGGLE
+              1. TOP HEADER BAR WITH THEME TOGGLE
           ───────────────────────────────────────────────────────── */}
           <header className="border-b border-cadslate-800 bg-cadslate-900/95 backdrop-blur sticky top-0 z-40 transition-colors">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
-              {/* JRK Corporate Brand & App Title */}
               <div className="flex items-center space-x-3.5">
-
-
                 <div>
                   <div className="flex items-center space-x-2">
                     <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">AutoCAD Smart XLS-to-CSV Bridge</h1>
                     <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cadcyan-500/15 text-cadcyan-400 border border-cadcyan-500/30">
-                      v2.5 JRK
+                      v3.0 JRK
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 hidden sm:block">
-                    ODI Infrastructure Suite • Drainage & Sewerage MTEXT Automation
+                    ODI Infrastructure Suite • CSVUPDATE (Plan Labels) & SEWSECTION (Longitudinal Sections)
                   </p>
                 </div>
               </div>
 
               {/* Action Buttons & Dark/Light Mode Toggle */}
               <div className="flex items-center space-x-2 sm:space-x-2.5">
-                {/* Dark / Light Mode Toggle Button */}
                 <button
                   type="button"
                   onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -1156,68 +1407,219 @@
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
             {/* ─────────────────────────────────────────────────────────
-                2. USER DESIGN DISCIPLINE SELECTOR BAR (Drainage vs Sewerage)
+                2. TARGET AUTOCAD LISP COMMAND SELECTOR (CSVUPDATE vs SEWSECTION)
             ───────────────────────────────────────────────────────── */}
-            <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-lg">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-cadcyan-400 flex items-center space-x-2">
-                  <span>Engineering Design Mode</span>
-                  <span className="text-[11px] font-normal text-slate-400">
-                    ({userDesignMode === 'AUTO' ? `Smart Auto-Detected: ${detectedMode} • ${detectionReason}` : `Manually Locked: ${userDesignMode}`})
-                  </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Card 1: CSVUPDATE */}
+              <div
+                onClick={() => setTargetTool('CSVUPDATE')}
+                className={`cursor-pointer rounded-2xl p-4 border-2 transition flex items-start space-x-3.5 shadow-lg ${
+                  targetTool === 'CSVUPDATE'
+                    ? 'border-cadcyan-500 bg-cadcyan-950/30 ring-2 ring-cadcyan-500/20'
+                    : 'border-cadslate-800 bg-cadslate-900 hover:border-cadslate-700'
+                }`}
+              >
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 font-mono font-bold text-sm ${
+                  targetTool === 'CSVUPDATE'
+                    ? 'bg-cadcyan-500 text-black shadow-md'
+                    : 'bg-cadslate-800 text-slate-400 border border-cadslate-700'
+                }`}>
+                  CSV
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Choose whether this spreadsheet is for <strong className="text-white">Road Drainage Design</strong> (Pipe ID, Size, Length, Gradient) or <strong className="text-white">Sewerage Design</strong> (Manhole ID, GL, IL, Depth). Duplicate IDs automatically keep the <strong className="text-cadcyan-400">Lowest Invert Level (IL)</strong>.
-                </p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-white flex items-center space-x-2">
+                      <span>1. CSVUPDATE Workflow</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cadslate-800 text-cadcyan-400 border border-cadslate-700">
+                        Plan View Labels
+                      </span>
+                    </span>
+                    {targetTool === 'CSVUPDATE' && (
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-cadcyan-500 text-black">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Batch updates <strong className="text-white">Road Drainage</strong> & <strong className="text-white">Sewerage Manhole</strong> text/multileaders in Plan View. Automatically merges duplicate IDs using the <strong className="text-cadcyan-400">Lowest Invert Level</strong>.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5 bg-cadslate-950 p-1.5 rounded-xl border border-cadslate-800 w-full lg:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setUserDesignMode('AUTO')}
-                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    userDesignMode === 'AUTO'
-                      ? 'bg-cadcyan-500 text-black shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
-                  }`}
-                >
-                  ⚡ Smart Auto ({detectedMode})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserDesignMode('DRAINAGE')}
-                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    userDesignMode === 'DRAINAGE'
-                      ? 'bg-cadcyan-500 text-black shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
-                  }`}
-                >
-                  🌊 Drainage Design
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserDesignMode('SEWERAGE')}
-                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    userDesignMode === 'SEWERAGE'
-                      ? 'bg-cadcyan-500 text-black shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
-                  }`}
-                >
-                  🕳️ Sewerage Design
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserDesignMode('HYBRID')}
-                  className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    userDesignMode === 'HYBRID'
-                      ? 'bg-cadcyan-500 text-black shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
-                  }`}
-                >
-                  🔀 Dual / Mixed
-                </button>
+              {/* Card 2: SEWSECTION */}
+              <div
+                onClick={() => setTargetTool('SEWSECTION')}
+                className={`cursor-pointer rounded-2xl p-4 border-2 transition flex items-start space-x-3.5 shadow-lg ${
+                  targetTool === 'SEWSECTION'
+                    ? 'border-cadcyan-500 bg-cadcyan-950/30 ring-2 ring-cadcyan-500/20'
+                    : 'border-cadslate-800 bg-cadslate-900 hover:border-cadslate-700'
+                }`}
+              >
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 font-mono font-bold text-sm ${
+                  targetTool === 'SEWSECTION'
+                    ? 'bg-cadcyan-500 text-black shadow-md'
+                    : 'bg-cadslate-800 text-slate-400 border border-cadslate-700'
+                }`}>
+                  SEC
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-white flex items-center space-x-2">
+                      <span>2. SEWSECTION Workflow</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cadslate-800 text-cadcyan-400 border border-cadslate-700">
+                        Longitudinal Section
+                      </span>
+                    </span>
+                    {targetTool === 'SEWSECTION' && (
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-cadcyan-500 text-black">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Generates <strong className="text-white">Sewerage Longitudinal Section</strong> profiles (<code className="text-cadcyan-400">LONG. SECTION OF MH...</code>) with <strong className="text-white">200m Distance Limit</strong> splitting, <strong className="text-cadcyan-400">Auto +10m Datum</strong>, and Backdrop steps.
+                  </p>
+                </div>
               </div>
             </div>
+
+            {/* ─────────────────────────────────────────────────────────
+                2B. DISCIPLINE / LONG-SECTION SETTINGS BAR
+            ───────────────────────────────────────────────────────── */}
+            {targetTool === 'CSVUPDATE' ? (
+              <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-lg">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-cadcyan-400 flex items-center space-x-2">
+                    <span>CSVUPDATE Engineering Design Mode</span>
+                    <span className="text-[11px] font-normal text-slate-400">
+                      ({userDesignMode === 'AUTO' ? `Smart Auto-Detected: ${detectedMode} • ${detectionReason}` : `Manually Locked: ${userDesignMode}`})
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Choose whether this spreadsheet is for <strong className="text-white">Road Drainage Design</strong> (Pipe ID, Size, Length, Gradient) or <strong className="text-white">Sewerage Design</strong> (Manhole ID, GL, IL, Depth). Duplicate IDs automatically keep the <strong className="text-cadcyan-400">Lowest Invert Level (IL)</strong>.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 bg-cadslate-950 p-1.5 rounded-xl border border-cadslate-800 w-full lg:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setUserDesignMode('AUTO')}
+                    className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      userDesignMode === 'AUTO'
+                        ? 'bg-cadcyan-500 text-black shadow-md'
+                        : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                    }`}
+                  >
+                    ⚡ Smart Auto ({detectedMode})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserDesignMode('DRAINAGE')}
+                    className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      userDesignMode === 'DRAINAGE'
+                        ? 'bg-cadcyan-500 text-black shadow-md'
+                        : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                    }`}
+                  >
+                    🌊 Drainage Design
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserDesignMode('SEWERAGE')}
+                    className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      userDesignMode === 'SEWERAGE'
+                        ? 'bg-cadcyan-500 text-black shadow-md'
+                        : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                    }`}
+                  >
+                    🕳️ Sewerage Design
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserDesignMode('HYBRID')}
+                    className={`flex-1 lg:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      userDesignMode === 'HYBRID'
+                        ? 'bg-cadcyan-500 text-black shadow-md'
+                        : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
+                    }`}
+                  >
+                    🔀 Dual / Mixed
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-lg">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-cadcyan-400 flex items-center space-x-2">
+                    <span>SEWSECTION Longitudinal Profile Parameters</span>
+                    <span className="text-[11px] font-normal text-slate-400">
+                      (HOR 1:{settings.secHorScale} • VER 1:{settings.secVerScale} • Limit: {settings.secMaxDist}m • {settings.secAutoDatum ? 'Auto +10m Datum' : `Manual Datum ${settings.secManualDatum}m`})
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Configure scales, <strong className="text-white">200m distance splitting</strong>, and <strong className="text-cadcyan-400">Automatic +10m Datum</strong> (adds 10m datum whenever levels are ≥ 10m). Exported CSV loads straight into <code className="text-cadcyan-400">SEWSECTION</code> (<code className="text-cadcyan-400">LONGSEC</code>).
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs w-full lg:w-auto">
+                  <div className="flex items-center space-x-1.5 bg-cadslate-950 px-2.5 py-1.5 rounded-lg border border-cadslate-800">
+                    <span className="text-slate-400">HOR:</span>
+                    <select
+                      value={settings.secHorScale}
+                      onChange={(e) => setSettings({ ...settings, secHorScale: parseInt(e.target.value, 10) || 1000 })}
+                      className="bg-transparent text-white font-mono font-bold focus:outline-none"
+                    >
+                      <option value={200} className="bg-cadslate-900">1:200</option>
+                      <option value={500} className="bg-cadslate-900">1:500</option>
+                      <option value={1000} className="bg-cadslate-900">1:1000</option>
+                      <option value={1500} className="bg-cadslate-900">1:1500</option>
+                      <option value={2000} className="bg-cadslate-900">1:2000</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center space-x-1 bg-cadslate-950 p-1 rounded-lg border border-cadslate-800">
+                    <span className="text-slate-400 px-1.5">VER:</span>
+                    {[200, 500, 1000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, secVerScale: v })}
+                        className={`px-2 py-1 rounded font-mono font-bold transition ${
+                          settings.secVerScale === v
+                            ? 'bg-cadcyan-500 text-black'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        1:{v}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center space-x-1.5 bg-cadslate-950 px-2.5 py-1.5 rounded-lg border border-cadslate-800">
+                    <span className="text-slate-400">Max Dist:</span>
+                    <input
+                      type="number"
+                      value={settings.secMaxDist}
+                      onChange={(e) => setSettings({ ...settings, secMaxDist: parseFloat(e.target.value) || 200 })}
+                      className="w-14 bg-transparent text-cadcyan-400 font-mono font-bold focus:outline-none text-right"
+                    />
+                    <span className="text-slate-400">m</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, secAutoDatum: !settings.secAutoDatum })}
+                    className={`px-2.5 py-1.5 rounded-lg font-bold border transition ${
+                      settings.secAutoDatum
+                        ? 'bg-cadcyan-500/15 border-cadcyan-500/40 text-cadcyan-300'
+                        : 'bg-cadslate-950 border-cadslate-800 text-slate-400'
+                    }`}
+                  >
+                    {settings.secAutoDatum ? '✓ Auto Datum (+10m)' : 'Manual Datum'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ─────────────────────────────────────────────────────────
                 3. MASSIVE DRAG-AND-DROP UPLOAD ZONE
@@ -1263,7 +1665,7 @@
                     Drag & Drop JRK Engineering Excel Spreadsheet
                   </h3>
                   <p className="text-sm text-slate-400 mt-1">
-                    Supports <span className="text-cadcyan-400 font-mono font-semibold">.xlsx</span>, <span className="text-cadcyan-400 font-mono font-semibold">.xls</span>, and <span className="text-cadcyan-400 font-mono font-semibold">.xlsm</span> Drainage & Sewerage calculation sheets
+                    Supports <span className="text-cadcyan-400 font-mono font-semibold">.xlsx</span>, <span className="text-cadcyan-400 font-mono font-semibold">.xls</span>, and <span className="text-cadcyan-400 font-mono font-semibold">.xlsm</span> calculation sheets for <strong className="text-white">CSVUPDATE</strong> & <strong className="text-white">SEWSECTION</strong>
                   </p>
                 </div>
 
@@ -1272,10 +1674,10 @@
                     ⚡ Smart Sewerage vs. Drainage Classifier
                   </span>
                   <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cadslate-800 border border-cadslate-700">
-                    📉 Duplicate IDs Keep Lowest Invert Level
+                    📉 Lowest Invert Level Deduplication
                   </span>
                   <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cadslate-800 border border-cadslate-700">
-                    🎯 Ready for AutoCAD CSVUPDATE
+                    📐 200m Long. Section Auto-Splitter
                   </span>
                 </div>
 
@@ -1287,21 +1689,21 @@
                     onClick={() => loadDemo('drainage')}
                     className="px-2.5 py-1 text-xs font-semibold text-cadcyan-300 bg-cadcyan-950/50 hover:bg-cadcyan-900/60 border border-cadcyan-500/30 rounded-md transition"
                   >
-                    Load Sample Drainage (with Dup IL)
+                    Sample Drainage (CSVUPDATE)
                   </button>
                   <button
                     type="button"
                     onClick={() => loadDemo('sewerage')}
                     className="px-2.5 py-1 text-xs font-semibold text-cademerald-400 bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/30 rounded-md transition"
                   >
-                    Load Sample Sewerage (with Dup IL)
+                    Sample Sewerage (CSVUPDATE)
                   </button>
                   <button
                     type="button"
-                    onClick={() => loadDemo('mixed')}
-                    className="px-2.5 py-1 text-xs font-semibold text-purple-300 bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 rounded-md transition"
+                    onClick={() => loadDemo('sewsection')}
+                    className="px-2.5 py-1 text-xs font-semibold text-fuchsia-300 bg-fuchsia-950/50 hover:bg-fuchsia-900/60 border border-fuchsia-500/30 rounded-md transition"
                   >
-                    Load Mixed Network
+                    Sample Long. Section (SEWSECTION)
                   </button>
                   <button
                     type="button"
@@ -1334,12 +1736,13 @@
                       <span className="text-xs text-slate-400 font-mono">({fileInfo.size})</span>
                     </div>
                     <div className="text-xs text-slate-400">
-                      Found {rawRows.length} raw rows in active sheet • Extracted {processedRows.length} unique CAD items
+                      Found {rawRows.length} raw rows • {targetTool === 'SEWSECTION'
+                        ? `Built ${sewSections.length} Longitudinal Section(s) (${stats.totalSecNodes} Manhole nodes)`
+                        : `Extracted ${processedRows.length} unique CAD items for CSVUPDATE`}
                     </div>
                   </div>
                 </div>
 
-                {/* Sheet Selector */}
                 {fileInfo.sheetNames && fileInfo.sheetNames.length > 1 && (
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="text-slate-400 mr-1">Worksheet:</span>
@@ -1350,6 +1753,7 @@
                           type="button"
                           onClick={() => {
                             setActiveSheet(sn);
+                            setActiveSecIdx(0);
                             parseSheet(workbook, sn, fileInfo.name);
                           }}
                           className={`px-2.5 py-1 rounded-md transition font-semibold ${
@@ -1382,24 +1786,14 @@
                     <div>
                       <h4 className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
                         <span>Smart Header Auto-Detection Summary</span>
-                        {effectiveMode === 'DRAINAGE' && (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cadcyan-500/15 text-cadcyan-300 border border-cadcyan-500/40">
-                            Active Mode: Drainage Design
-                          </span>
-                        )}
-                        {effectiveMode === 'SEWERAGE' && (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40">
-                            Active Mode: Sewerage Design
-                          </span>
-                        )}
-                        {effectiveMode === 'HYBRID' && (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/40">
-                            Active Mode: Dual Network (Drainage + Sewerage)
-                          </span>
-                        )}
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cadcyan-500/15 text-cadcyan-300 border border-cadcyan-500/40">
+                          Target Tool: {targetTool} ({effectiveMode})
+                        </span>
                       </h4>
                       <p className="text-xs text-slate-400">
-                        Signals: {detectionReason} • Duplicate rows automatically merge by lowest Invert Level
+                        {targetTool === 'SEWSECTION'
+                          ? 'Mapping Manhole ID, Pipe Length, Size, Gradient, Pipe Type (VCP/RCP), GL, IL & Backdrop for Longitudinal Section'
+                          : `Signals: ${detectionReason} • Duplicate rows automatically merge by lowest Invert Level`}
                       </p>
                     </div>
                   </div>
@@ -1418,20 +1812,26 @@
 
                 {/* Visual Status Chips */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Drainage Group */}
-                  <div className={`bg-cadslate-950/60 border rounded-lg p-3.5 space-y-2 transition ${effectiveMode === 'DRAINAGE' ? 'border-cadcyan-500/60 ring-1 ring-cadcyan-500/20' : 'border-cadslate-800/80'}`}>
+                  {/* Pipe Details Group */}
+                  <div className={`bg-cadslate-950/60 border rounded-lg p-3.5 space-y-2 transition ${effectiveMode === 'DRAINAGE' || targetTool === 'SEWSECTION' ? 'border-cadcyan-500/60 ring-1 ring-cadcyan-500/20' : 'border-cadslate-800/80'}`}>
                     <div className="flex items-center justify-between text-xs font-semibold text-cadcyan-400">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-2 h-2 rounded-full bg-cadcyan-400 inline-block"></span>
-                        <span>A. Drainage Design Columns</span>
+                        <span>{targetTool === 'SEWSECTION' ? 'A. Sewer Pipe Segment Columns' : 'A. Drainage Design Columns'}</span>
                       </span>
-                      <span className="text-[11px] text-slate-400 font-normal">ID, Size, Length, Gradient + IL Check</span>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        {targetTool === 'SEWSECTION' ? 'Length, Pipe Size, Gradient, Pipe Type' : 'ID, Size, Length, Gradient'}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
-                        <span className="text-slate-400">ID:</span>
-                        {columnMap.drainId ? (
+                        <span className="text-slate-400">{targetTool === 'SEWSECTION' ? 'Material:' : 'ID:'}</span>
+                        {targetTool === 'SEWSECTION' ? (
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
+                            {columnMap.pipeType ? `✓ ${columnMap.pipeType}` : 'Default: VCP'}
+                          </span>
+                        ) : columnMap.drainId ? (
                           <span className="font-mono font-medium truncate ml-1 text-[11px] text-cadcyan-300">
                             ✓ {columnMap.drainId}{columnMap.drainIdSub ? ` + ${columnMap.drainIdSub}` : ''}
                           </span>
@@ -1472,19 +1872,21 @@
                     </div>
                   </div>
 
-                  {/* Sewerage Group */}
+                  {/* Sewerage Manhole Group */}
                   <div className={`bg-cadslate-950/60 border rounded-lg p-3.5 space-y-2 transition ${effectiveMode === 'SEWERAGE' ? 'border-cadcyan-500/60 ring-1 ring-cadcyan-500/20' : 'border-cadslate-800/80'}`}>
                     <div className="flex items-center justify-between text-xs font-semibold text-cademerald-400">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
-                        <span>B. Sewerage Manhole Columns</span>
+                        <span>B. Sewerage Manhole & Level Columns</span>
                       </span>
-                      <span className="text-[11px] text-slate-400 font-normal">ID, GL, Lowest IL, Depth</span>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        {targetTool === 'SEWSECTION' ? 'ID, GL, IL, Backdrop (B/D)' : 'ID, GL, Lowest IL, Depth'}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
-                        <span className="text-slate-400">ID:</span>
+                        <span className="text-slate-400">MH ID:</span>
                         {columnMap.sewerId ? (
                           <span className="font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
                             ✓ {columnMap.sewerId}{columnMap.sewerIdSub ? ` + ${columnMap.sewerIdSub}` : ''}
@@ -1514,8 +1916,12 @@
                         )}
                       </div>
                       <div className="bg-cadslate-900 border border-cadslate-800 rounded p-2 flex items-center justify-between">
-                        <span className="text-slate-400">Depth:</span>
-                        {columnMap.depth ? (
+                        <span className="text-slate-400">{targetTool === 'SEWSECTION' ? 'Backdrop:' : 'Depth:'}</span>
+                        {targetTool === 'SEWSECTION' ? (
+                          <span className="font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
+                            {columnMap.backdrop ? `✓ ${columnMap.backdrop}` : 'Auto (IL step)'}
+                          </span>
+                        ) : columnMap.depth ? (
                           <span className="font-mono font-medium truncate ml-1 text-[11px] text-emerald-300">
                             ✓ {columnMap.depth}
                           </span>
@@ -1533,13 +1939,24 @@
                     <p className="text-xs text-slate-400 font-medium">
                       Manually select which Excel column corresponds to each engineering parameter:
                     </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
                       <div>
                         <label className="block text-slate-400 mb-1">Drain ID</label>
                         <select
                           value={columnMap.drainId}
                           onChange={(e) => setColumnMap({ ...columnMap, drainId: e.target.value, drainIdSub: '' })}
                           className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-cadcyan-500 font-mono"
+                        >
+                          <option value="">-- Auto/None --</option>
+                          {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 mb-1">Manhole ID</label>
+                        <select
+                          value={columnMap.sewerId}
+                          onChange={(e) => setColumnMap({ ...columnMap, sewerId: e.target.value, sewerIdSub: '' })}
+                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-emerald-500 font-mono"
                         >
                           <option value="">-- Auto/None --</option>
                           {columns.map(c => <option key={c} value={c}>{c}</option>)}
@@ -1580,17 +1997,6 @@
                       </div>
 
                       <div>
-                        <label className="block text-slate-400 mb-1">Manhole ID</label>
-                        <select
-                          value={columnMap.sewerId}
-                          onChange={(e) => setColumnMap({ ...columnMap, sewerId: e.target.value, sewerIdSub: '' })}
-                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-emerald-500 font-mono"
-                        >
-                          <option value="">-- Auto/None --</option>
-                          {columns.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                      <div>
                         <label className="block text-slate-400 mb-1">Ground Level (GL)</label>
                         <select
                           value={columnMap.gl}
@@ -1623,6 +2029,28 @@
                           {columns.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
+                      <div>
+                        <label className="block text-slate-400 mb-1">Pipe Material (VCP/RCP)</label>
+                        <select
+                          value={columnMap.pipeType}
+                          onChange={(e) => setColumnMap({ ...columnMap, pipeType: e.target.value })}
+                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-emerald-500 font-mono"
+                        >
+                          <option value="">-- Default (VCP) --</option>
+                          {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 mb-1">Backdrop (B/D IL)</label>
+                        <select
+                          value={columnMap.backdrop}
+                          onChange={(e) => setColumnMap({ ...columnMap, backdrop: e.target.value })}
+                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-emerald-500 font-mono"
+                        >
+                          <option value="">-- Auto/None --</option>
+                          {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1630,9 +2058,266 @@
             )}
 
             {/* ─────────────────────────────────────────────────────────
-                5. DATA PREVIEW TABLE & STATS BAR
+                5A. SEWSECTION WORKSPACE (Interactive Longitudinal Section Preview & Table)
             ───────────────────────────────────────────────────────── */}
-            {processedRows.length > 0 && (
+            {targetTool === 'SEWSECTION' && rawRows.length > 0 && (
+              <div className="space-y-6">
+                {sewSections.length === 0 ? (
+                  <div className="bg-cadslate-900 border border-amber-500/40 rounded-xl p-8 text-center space-y-3">
+                    <div className="text-sm font-bold text-amber-400">
+                      No Sewerage Manhole Chains Detected in Current Sheet
+                    </div>
+                    <p className="text-xs text-slate-400 max-w-lg mx-auto">
+                      To generate a Longitudinal Section (<code className="text-cadcyan-400">SEWSECTION</code>), the spreadsheet needs Manhole IDs, Pipe Lengths, Ground Levels (GL), and Invert Levels (IL).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => loadDemo('sewsection')}
+                      className="px-4 py-2 bg-cadcyan-500 hover:bg-cadcyan-400 text-black font-bold rounded-lg text-xs transition"
+                    >
+                      Load Sample Sewerage Long. Section
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl overflow-hidden shadow-2xl space-y-5 p-5">
+                    {/* Section Tabs Bar */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-cadslate-800 pb-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                          <span>Generated Longitudinal Sections ({sewSections.length})</span>
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-cadcyan-500/15 text-cadcyan-400 border border-cadcyan-500/30">
+                            Max {settings.secMaxDist}m Split
+                          </span>
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Click any section tab below to inspect its CAD profile preview, Auto Datum, and manhole chainage table.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {sewSections.map((sec, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setActiveSecIdx(idx)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition ${
+                              activeSecIdx === idx
+                                ? 'bg-cadcyan-500 text-black shadow-md'
+                                : 'bg-cadslate-950 text-slate-300 border border-cadslate-800 hover:border-cadcyan-500/40'
+                            }`}
+                          >
+                            Sec {sec.index}: {sec.nodes[0].id}→{sec.nodes[sec.nodes.length - 1].id} ({sec.totalLength.toFixed(0)}m)
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Visual AutoCAD Longitudinal Section Canvas Simulation */}
+                    {currentPreviewSection && (() => {
+                      const sec = currentPreviewSection;
+                      const datum = sec.datum;
+                      const maxGL = Math.max(...sec.nodes.map(n => n.gl));
+                      const minIL = Math.min(...sec.nodes.map(n => n.ilOut));
+                      const elevSpan = Math.max(4.0, (maxGL - datum) + 2.0);
+                      const totalDist = Math.max(10.0, sec.totalLength);
+
+                      const svgW = 920;
+                      const svgH = 340;
+                      const leftHdrW = 195;
+                      const plotW = svgW - leftHdrW - 35;
+                      const yDatum = 165;
+                      const plotTop = 35;
+                      const yScale = (yDatum - plotTop - 15) / elevSpan;
+
+                      const xAt = (d) => leftHdrW + (d / totalDist) * plotW;
+                      const yAt = (elev) => yDatum - (elev - datum) * yScale;
+
+                      return (
+                        <div className="space-y-4">
+                          <div className="cad-preview-box rounded-xl border border-cadslate-800 p-4 overflow-x-auto shadow-inner">
+                            <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full min-w-[740px] h-auto select-none font-mono">
+                              {/* Datum & Table Horizontal Lines (Layer TITLE = White) */}
+                              <line x1="12" y1={yDatum} x2={leftHdrW + plotW} y2={yDatum} stroke="#f8fafc" strokeWidth="1.2" />
+                              <line x1="12" y1={yDatum + 30} x2={leftHdrW + plotW} y2={yDatum + 30} stroke="#f8fafc" strokeWidth="1.2" />
+                              <line x1="12" y1={yDatum + 60} x2={leftHdrW + plotW} y2={yDatum + 60} stroke="#f8fafc" strokeWidth="1.2" />
+                              <line x1="12" y1={yDatum + 90} x2={leftHdrW + plotW} y2={yDatum + 90} stroke="#f8fafc" strokeWidth="1.2" />
+
+                              {/* Left Table Labels */}
+                              <text x="16" y={yDatum - 6} fill="#f8fafc" fontSize="10" fontWeight="bold">
+                                DATUM {Number.isInteger(datum) ? datum : datum.toFixed(1)}m
+                              </text>
+                              <text x="16" y={yDatum + 13} fill="#f8fafc" fontSize="8.5">MANHOLES INVERT LEVEL</text>
+                              <text x="16" y={yDatum + 24} fill="#f8fafc" fontSize="8.5">IN METERS</text>
+                              <line x1="145" y1={yDatum + 15} x2="185" y2={yDatum + 15} stroke="#ff00ff" strokeWidth="1.5" />
+
+                              <text x="16" y={yDatum + 43} fill="#f8fafc" fontSize="8.5">PROPOSED ROAD LEVEL</text>
+                              <text x="16" y={yDatum + 54} fill="#f8fafc" fontSize="8.5">IN METERS</text>
+                              <line x1="145" y1={yDatum + 45} x2="185" y2={yDatum + 45} stroke="#facc15" strokeWidth="1.5" strokeDasharray="5,3" />
+
+                              <text x="16" y={yDatum + 78} fill="#f8fafc" fontSize="8.5">DISTANCE IN METERS</text>
+
+                              {/* Profile Lines & Manhole Verticals */}
+                              {sec.nodes.map((node, i) => {
+                                const x = xAt(node.dist);
+                                const yGl = yAt(node.gl);
+                                const yIlIn = yAt(node.ilIn);
+                                const yIlOut = yAt(node.ilOut);
+                                const next = i < sec.nodes.length - 1 ? sec.nodes[i + 1] : null;
+                                const xNext = next ? xAt(next.dist) : null;
+                                const yGlNext = next ? yAt(next.gl) : null;
+                                const yIlNextIn = next ? yAt(next.ilIn) : null;
+
+                                return (
+                                  <g key={i}>
+                                    {/* Vertical Manhole Line from Bottom of Table to Top */}
+                                    <line x1={x} y1={yDatum + 90} x2={x} y2="20" stroke="#f8fafc" strokeWidth="1" />
+                                    {/* Manhole Shaft Twin Lines between IL and GL */}
+                                    <line x1={x - 2.5} y1={yIlOut} x2={x - 2.5} y2={yGl} stroke="#f8fafc" strokeWidth="1" />
+                                    <line x1={x + 2.5} y1={yIlOut} x2={x + 2.5} y2={yGl} stroke="#f8fafc" strokeWidth="1" />
+
+                                    {/* Top Magenta Manhole Label */}
+                                    <text
+                                      x={x - 4}
+                                      y="36"
+                                      fill="#ff00ff"
+                                      fontSize="9.5"
+                                      fontWeight="bold"
+                                      transform={`rotate(-90 ${x - 4} 36)`}
+                                    >
+                                      {node.id}
+                                    </text>
+
+                                    {/* Backdrop vertical step if present */}
+                                    {i > 0 && (node.ilIn - node.ilOut) > 0.01 && (
+                                      <line x1={x} y1={yIlIn} x2={x} y2={yIlOut} stroke="#ff00ff" strokeWidth="1.8" />
+                                    )}
+
+                                    {/* Segment Profile Lines & Pipe Label to Next Manhole */}
+                                    {next && (
+                                      <>
+                                        {/* Magenta Invert Line */}
+                                        <line x1={x} y1={yIlOut} x2={xNext} y2={yIlNextIn} stroke="#ff00ff" strokeWidth="1.6" />
+                                        {/* Yellow Dashed Proposed Road Line */}
+                                        <line x1={x} y1={yGl} x2={xNext} y2={yGlNext} stroke="#facc15" strokeWidth="1.5" strokeDasharray="6,4" />
+                                        {/* Pipe Spec Label in Row 1 */}
+                                        <text
+                                          x={(x + xNext) / 2}
+                                          y={yDatum + 18}
+                                          fill="#f8fafc"
+                                          fontSize="8"
+                                          textAnchor="middle"
+                                        >
+                                          {`${node.size}Ø ${node.mat} 1:${node.grad}`}
+                                        </text>
+                                      </>
+                                    )}
+
+                                    {/* Rotated Table Numbers (IL, GL, Distance) */}
+                                    <text
+                                      x={i === 0 ? x + 8 : x - 5}
+                                      y={yDatum + 24}
+                                      fill="#f8fafc"
+                                      fontSize="7.5"
+                                      transform={`rotate(-90 ${i === 0 ? x + 8 : x - 5} ${yDatum + 24})`}
+                                    >
+                                      {node.ilOut.toFixed(2)}
+                                    </text>
+                                    <text
+                                      x={i === 0 ? x + 8 : x - 5}
+                                      y={yDatum + 54}
+                                      fill="#f8fafc"
+                                      fontSize="7.5"
+                                      transform={`rotate(-90 ${i === 0 ? x + 8 : x - 5} ${yDatum + 54})`}
+                                    >
+                                      {node.gl.toFixed(2)}
+                                    </text>
+                                    <text
+                                      x={i === 0 ? x + 8 : x - 5}
+                                      y={yDatum + 84}
+                                      fill="#f8fafc"
+                                      fontSize="7.5"
+                                      transform={`rotate(-90 ${i === 0 ? x + 8 : x - 5} ${yDatum + 84})`}
+                                    >
+                                      {node.dist.toFixed(2)}
+                                    </text>
+                                  </g>
+                                );
+                              })}
+
+                              {/* Bottom Section Title & Scale */}
+                              <text x="16" y={yDatum + 122} fill="#f8fafc" fontSize="14" fontWeight="bold" letterSpacing="1">
+                                {sec.title}
+                              </text>
+                              <text x="20" y={yDatum + 136} fill="#94a3b8" fontSize="8.5">
+                                SCALE   HOR = 1:{settings.secHorScale}    VER = 1:{settings.secVerScale}
+                              </text>
+                            </svg>
+                          </div>
+
+                          {/* Section Node Schedule Table */}
+                          <div className="overflow-x-auto border border-cadslate-800 rounded-xl">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-cadslate-950 text-slate-400 border-b border-cadslate-800 uppercase tracking-wider font-semibold">
+                                  <th className="py-2.5 px-4">#</th>
+                                  <th className="py-2.5 px-4">Manhole ID</th>
+                                  <th className="py-2.5 px-4">Chainage Dist (m)</th>
+                                  <th className="py-2.5 px-4">Road Level GL (m)</th>
+                                  <th className="py-2.5 px-4">Invert Level IL (m)</th>
+                                  <th className="py-2.5 px-4">Depth (m)</th>
+                                  <th className="py-2.5 px-4">Backdrop (B/D IL)</th>
+                                  <th className="py-2.5 px-4">Outgoing Pipe Spec</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-cadslate-800/60 font-mono">
+                                {sec.nodes.map((n, nIdx) => {
+                                  const isLast = nIdx === sec.nodes.length - 1;
+                                  const segLen = !isLast ? (sec.nodes[nIdx + 1].dist - n.dist) : null;
+                                  const hasBd = (n.ilIn - n.ilOut) > 0.005;
+                                  return (
+                                    <tr key={nIdx} className="hover:bg-cadslate-800/40 transition">
+                                      <td className="py-2.5 px-4 text-slate-500">{nIdx + 1}</td>
+                                      <td className="py-2.5 px-4 font-bold text-fuchsia-400">{n.id}</td>
+                                      <td className="py-2.5 px-4 text-white font-semibold">{n.dist.toFixed(2)}m</td>
+                                      <td className="py-2.5 px-4 text-amber-300">{n.gl.toFixed(2)}m</td>
+                                      <td className="py-2.5 px-4 text-cadcyan-300 font-bold">{n.ilOut.toFixed(2)}m</td>
+                                      <td className="py-2.5 px-4 text-slate-300">{(n.gl - n.ilOut).toFixed(2)}m</td>
+                                      <td className="py-2.5 px-4">
+                                        {hasBd ? (
+                                          <span className="px-2 py-0.5 rounded bg-fuchsia-950/50 text-fuchsia-300 border border-fuchsia-500/30 text-[11px]">
+                                            B/D IL: {n.ilIn.toFixed(2)}m (Drop {(n.ilIn - n.ilOut).toFixed(2)}m)
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-500">—</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-4">
+                                        {!isLast ? (
+                                          <span className="text-white bg-cadslate-950 px-2.5 py-1 rounded border border-cadslate-800">
+                                            {n.size}Ø {n.mat} 1:{n.grad} ({segLen.toFixed(1)}m)
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-500 italic">End of Section ({sec.totalLength.toFixed(2)}m)</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─────────────────────────────────────────────────────────
+                5B. CSVUPDATE WORKSPACE (Data Preview Table & Stats Bar)
+            ───────────────────────────────────────────────────────── */}
+            {targetTool === 'CSVUPDATE' && processedRows.length > 0 && (
               <div className="bg-cadslate-900 border border-cadslate-800 rounded-xl overflow-hidden shadow-2xl space-y-4">
                 
                 {/* Statistics & Filters Bar */}
@@ -1681,7 +2366,6 @@
                             ? 'bg-amber-500 text-black shadow'
                             : 'bg-amber-950/50 text-amber-300 border border-amber-500/30 hover:bg-amber-900/50'
                         }`}
-                        title="Show duplicate IDs that were automatically merged using the lowest Invert Level"
                       >
                         Lowest-IL Merged ({stats.mergedCount})
                       </button>
@@ -1859,51 +2543,96 @@
           </main>
 
           {/* ─────────────────────────────────────────────────────────
-              6. STICKY FOOTER WITH EXPORT BUTTONS
+              6. STICKY FOOTER WITH CONTEXT-AWARE EXPORT BUTTONS
           ───────────────────────────────────────────────────────── */}
           <footer className="border-t border-cadslate-800 bg-cadslate-900/95 backdrop-blur p-4 sticky bottom-0 z-40 transition-colors">
             <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-xs text-slate-400 flex items-center space-x-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-cadcyan-500 animate-pulse"></span>
                 <span>
-                  {processedRows.length > 0
-                    ? `Ready to export ${processedRows.length} unique ${effectiveMode} items (Lowest IL applied to ${stats.mergedCount} duplicate IDs)`
-                    : 'Awaiting spreadsheet upload or sample selection'}
+                  {targetTool === 'SEWSECTION'
+                    ? (sewSections.length > 0
+                        ? `SEWSECTION Mode: Ready to export ${sewSections.length} Longitudinal Section(s) (${stats.totalSecNodes} Manhole nodes)`
+                        : 'SEWSECTION Mode: Upload a Sewerage calculation spreadsheet or load sample')
+                    : (processedRows.length > 0
+                        ? `CSVUPDATE Mode: Ready to export ${processedRows.length} unique ${effectiveMode} items (Lowest IL applied to ${stats.mergedCount} duplicate IDs)`
+                        : 'CSVUPDATE Mode: Awaiting spreadsheet upload or sample selection')}
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={exportMtextCSV}
-                  disabled={processedRows.length === 0}
-                  className={`inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl font-medium text-xs tracking-wide transition border ${
-                    processedRows.length > 0
-                      ? 'border-cadslate-700 bg-cadslate-800 hover:bg-cadslate-750 text-slate-200 hover:text-white cursor-pointer'
-                      : 'border-cadslate-800 bg-cadslate-900 text-slate-500 cursor-not-allowed'
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <span>Export 2-Col MTEXT (.CSV)</span>
-                </button>
+                {targetTool === 'SEWSECTION' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setTargetTool('CSVUPDATE')}
+                      className="inline-flex items-center justify-center space-x-1.5 px-4 py-2.5 rounded-xl font-medium text-xs border border-cadslate-700 bg-cadslate-800 hover:bg-cadslate-750 text-slate-200 transition"
+                    >
+                      <span>Switch to CSVUPDATE</span>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={exportCSV}
-                  disabled={processedRows.length === 0}
-                  className={`w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-bold text-sm tracking-wide shadow-xl transition ${
-                    processedRows.length > 0
-                      ? 'bg-gradient-to-r from-[#00b050] to-[#009142] hover:from-[#00c85b] hover:to-[#00b050] text-black shadow-cadcyan-500/20 cursor-pointer scale-100 hover:scale-[1.02]'
-                      : 'bg-cadslate-800 text-slate-500 cursor-not-allowed'
-                  }`}
-                >
-                  <svg className="w-5 h-5 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  <span>Export Smart Raw .CSV (5-Column)</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={exportSewSectionCSV}
+                      disabled={sewSections.length === 0}
+                      className={`w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-bold text-sm tracking-wide shadow-xl transition ${
+                        sewSections.length > 0
+                          ? 'bg-gradient-to-r from-[#00b050] to-[#009142] hover:from-[#00c85b] hover:to-[#00b050] text-black shadow-cadcyan-500/20 cursor-pointer scale-100 hover:scale-[1.02]'
+                          : 'bg-cadslate-800 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg className="w-5 h-5 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      <span>Export SEWSECTION .CSV (Longitudinal Profile)</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {sewSections.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={exportSewSectionCSV}
+                        className="inline-flex items-center justify-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-cadcyan-500/40 bg-cadcyan-950/50 hover:bg-cadcyan-900/60 text-cadcyan-300 transition"
+                        title="Also export Longitudinal Section CSV for SEWSECTION"
+                      >
+                        <span>Export SEWSECTION .CSV</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={exportMtextCSV}
+                      disabled={processedRows.length === 0}
+                      className={`inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl font-medium text-xs tracking-wide transition border ${
+                        processedRows.length > 0
+                          ? 'border-cadslate-700 bg-cadslate-800 hover:bg-cadslate-750 text-slate-200 hover:text-white cursor-pointer'
+                          : 'border-cadslate-800 bg-cadslate-900 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Export 2-Col MTEXT (.CSV)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={exportCSV}
+                      disabled={processedRows.length === 0}
+                      className={`w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-bold text-sm tracking-wide shadow-xl transition ${
+                        processedRows.length > 0
+                          ? 'bg-gradient-to-r from-[#00b050] to-[#009142] hover:from-[#00c85b] hover:to-[#00b050] text-black shadow-cadcyan-500/20 cursor-pointer scale-100 hover:scale-[1.02]'
+                          : 'bg-cadslate-800 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg className="w-5 h-5 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      <span>Export CSVUPDATE Raw .CSV (5-Column)</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </footer>
@@ -1919,7 +2648,7 @@
                     <svg className="w-5 h-5 text-cadcyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                     </svg>
-                    <span>Formatting Settings</span>
+                    <span>Formatting & Profile Settings</span>
                   </div>
                   <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1931,7 +2660,7 @@
                 <div className="space-y-4 text-xs">
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
-                      Text Width Factor: <span className="text-cadcyan-400 font-mono font-bold">{settings.textWidthFactor}</span>
+                      CSVUPDATE Text Width Factor: <span className="text-cadcyan-400 font-mono font-bold">{settings.textWidthFactor}</span>
                     </label>
                     <input
                       type="number"
@@ -1944,66 +2673,57 @@
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
-                      Short Pipe Threshold: <span className="text-cadcyan-400 font-mono font-bold">{settings.shortPipeThreshold}m</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="1"
-                      max="100"
-                      value={settings.shortPipeThreshold}
-                      onChange={(e) => setSettings({ ...settings, shortPipeThreshold: parseFloat(e.target.value) || 6 })}
-                      className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white font-mono focus:border-cadcyan-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
-                      Medium Pipe Threshold: <span className="text-cadcyan-400 font-mono font-bold">{settings.mediumPipeThreshold}m</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="1"
-                      max="100"
-                      value={settings.mediumPipeThreshold}
-                      onChange={(e) => setSettings({ ...settings, mediumPipeThreshold: parseFloat(e.target.value) || 14 })}
-                      className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2.5 text-white font-mono focus:border-cadcyan-500"
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t border-cadslate-800 flex items-center justify-between">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="font-semibold text-slate-300">Smart Length Formatting</div>
-                      <div className="text-[11px] text-slate-500">Auto-partitions into 4, 2, or 1 lines based on pipe length</div>
+                      <label className="block text-slate-300 font-semibold mb-1">
+                        Short Pipe (m): <span className="text-cadcyan-400 font-mono font-bold">{settings.shortPipeThreshold}m</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={settings.shortPipeThreshold}
+                        onChange={(e) => setSettings({ ...settings, shortPipeThreshold: parseFloat(e.target.value) || 6 })}
+                        className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                      />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setSettings({ ...settings, smartLengthFormatting: !settings.smartLengthFormatting })}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                        settings.smartLengthFormatting ? 'bg-cadcyan-500' : 'bg-cadslate-700'
-                      }`}
-                    >
-                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${settings.smartLengthFormatting ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">
+                        Medium Pipe (m): <span className="text-cadcyan-400 font-mono font-bold">{settings.mediumPipeThreshold}m</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={settings.mediumPipeThreshold}
+                        onChange={(e) => setSettings({ ...settings, mediumPipeThreshold: parseFloat(e.target.value) || 14 })}
+                        className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-slate-300">Clean "1:" Gradient Prefix</div>
-                      <div className="text-[11px] text-slate-500">Prevents double prefix ("1:1:500")</div>
+                  <div className="pt-2 border-t border-cadslate-800 space-y-3">
+                    <div className="font-bold text-cadcyan-400 uppercase tracking-wider text-[11px]">
+                      SEWSECTION Longitudinal Profile Defaults
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setSettings({ ...settings, cleanGradientPrefix: !settings.cleanGradientPrefix })}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                        settings.cleanGradientPrefix ? 'bg-cadcyan-500' : 'bg-cadslate-700'
-                      }`}
-                    >
-                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${settings.cleanGradientPrefix ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Max Section Limit (m)</label>
+                        <input
+                          type="number"
+                          value={settings.secMaxDist}
+                          onChange={(e) => setSettings({ ...settings, secMaxDist: parseFloat(e.target.value) || 200 })}
+                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1">Base Datum if &lt; 10m (m)</label>
+                        <input
+                          type="number"
+                          value={settings.secBaseDatumUnder10}
+                          onChange={(e) => setSettings({ ...settings, secBaseDatumUnder10: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2081,7 +2801,7 @@
           )}
 
           {/* ─────────────────────────────────────────────────────────
-              CAD LISP INTEGRATION GUIDE MODAL
+              CAD LISP INTEGRATION GUIDE MODAL (CSVUPDATE + SEWSECTION)
           ───────────────────────────────────────────────────────── */}
           {isGuideOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -2091,7 +2811,7 @@
                     <svg className="w-5 h-5 text-cadcyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                     </svg>
-                    <span>AutoCAD / GstarCAD Workflow</span>
+                    <span>AutoCAD / GstarCAD Workflow (CSVUPDATE & SEWSECTION)</span>
                   </div>
                   <button onClick={() => setIsGuideOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2102,21 +2822,19 @@
 
                 <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
                   <div className="p-3 rounded-lg bg-cadslate-950 border border-cadslate-800">
-                    <div className="font-bold text-cadcyan-400 mb-1">Step 1: Upload & Verify Design Mode</div>
+                    <div className="font-bold text-cadcyan-400 mb-1">Workflow A: Plan View Updates (CSVUPDATE)</div>
                     <p className="text-slate-400">
-                      Drop your JRK Excel file. The app auto-detects <strong className="text-white">Drainage</strong> or <strong className="text-white">Sewerage</strong> (or you can click the mode buttons at the top to switch manually). Duplicate IDs automatically retain the lowest Invert Level.
+                      1. Select <strong className="text-white">"1. CSVUPDATE Workflow"</strong> at the top.<br/>
+                      2. Drop your Drainage or Sewerage Excel file and click <strong className="text-white">"Export CSVUPDATE Raw .CSV"</strong>.<br/>
+                      3. In CAD, run <code className="text-cadcyan-400">CSVUPDATE</code>, select <code className="text-cadcyan-400">AutoCAD_Smart_Raw.csv</code>, and click a sample text on the target layer.
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-cadslate-950 border border-cadslate-800">
-                    <div className="font-bold text-cadcyan-400 mb-1">Step 2: Export Smart Raw .CSV</div>
+                    <div className="font-bold text-cadcyan-400 mb-1">Workflow B: Sewerage Longitudinal Sections (SEWSECTION)</div>
                     <p className="text-slate-400">
-                      Click <strong className="text-white">"Export Smart Raw .CSV (5-Column)"</strong> to download <code className="text-cadcyan-400">AutoCAD_Smart_Raw.csv</code>.
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-cadslate-950 border border-cadslate-800">
-                    <div className="font-bold text-cadcyan-400 mb-1">Step 3: Run CSVUPDATE in AutoCAD / GstarCAD</div>
-                    <p className="text-slate-400">
-                      Type <code className="text-cadcyan-400">CSVUPDATE</code>, select the exported CSV file, and click one text on the target layer. Missing items are highlighted in <strong className="text-red-400">Red</strong> and duplicate CAD IDs in <strong className="text-blue-400">Blue</strong>.
+                      1. Select <strong className="text-white">"2. SEWSECTION Workflow"</strong> at the top.<br/>
+                      2. Drop your Sewerage calculation sheet, preview the 200m split sections, and click <strong className="text-white">"Export SEWSECTION .CSV"</strong>.<br/>
+                      3. In CAD, run <code className="text-cadcyan-400">SEWSECTION</code> (or <code className="text-cadcyan-400">LONGSEC</code>), choose your scales (<code className="text-white">1:1000</code> Hor, <code className="text-white">1:200 / 1:500 / 1:1000</code> Ver), select <code className="text-cadcyan-400">AutoCAD_SewSection.csv</code>, and click an insertion point!
                     </p>
                   </div>
                 </div>

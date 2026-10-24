@@ -3,27 +3,27 @@
 ;;; MODULE      : pipechouse.lsp
 ;;; COMMAND     : PIPECHOUSE (Aliases: PIPEC-HOUSE, PHOUSE)
 ;;; DESCRIPTION : Residential Road Drainage Generator with Live 30m Visual
-;;;               Ruler, Party-Wall Sump Splitting & Universal SIL00.00 MLeader
+;;;               Ruler, LWPOLYLINE Drain Segments & Up/Down Text Placement
 ;;; ==========================================================================
 
-(defun c:pipechouse ( / *error* sysVars sysVals 
+(defun c:pipechouse ( / *error* sysVars sysVals ucsChanged
                         ;; --- settings ---
-                        drainLayer drainColor arrowLayer arrowColor arrowWidth
-                        sumpLayer sumpColor sumpRad textLayer textColor txtHgt txtStyle txtWidth
+                        drainLayer drainColor drainWidth arrowLayer arrowColor arrowWidth
+                        sumpLayer sumpColor sumpRad textLayer textColor txtHgt txtStyle txtWidth txtPos
                         mlLayer mlStyle mlText mlJustify mlSide mlLeadLen mlLandDist mlArrowSize mlLandGap
                         ilMode unitsPerM maxSegM guideWidth defCode defSize defGrad pipeTextRot0
                         ;; --- working variables ---
-                        askInfo ans currCode prevCode size grad pt1 pt2 ang dist maxDist
+                        askInfo ans currCode prevCode size grad pt1 pt2 pickedEnd ang dist maxDist
                         nodePts currPt remDistM splitLoop pPick pPickWcs dAlong dCurr projPt segM
                         numRem remStep k tempEnts
                         numSeg i sumpPt pA pB segMid segDistM linePt1 linePt2 arrowSize arrowP1 arrowP2
                         txtAngRad finalTxtAng pText str strCode strCodeInline mtextStr
                         distAbove distBelow pTextAbove pTextBelow
-                        blockedAbove blockedBelow history stepEnts lastStep loop sumpCache silCache e
+                        history stepEnts lastStep loop sumpCache silCache e
                         ;; --- local helper functions ---
-                        ensure-layer ensure-textstyle esc-filter pt2d near-p mk mk-temp clear-temp
-                        draw-split-hud next-seq scan-sumps scan-sils mlstyle-exists-p ensure-mlstyle
-                        force-mleader-text style-mleader-obj text-blocked-p
+                        restore-session ensure-layer ensure-textstyle esc-filter pt2d near-p mk mk-temp
+                        clear-temp draw-split-hud next-seq scan-sumps scan-sils mlstyle-exists-p
+                        ensure-mlstyle force-mleader-text style-mleader-obj
                         make-il make-il-mleader make-il-basic)
 
   ;; =========================================================================
@@ -35,6 +35,7 @@
 
   (setq drainLayer "#JRK - RD Drain Line")
   (setq drainColor 4)
+  (setq drainWidth 0.0)        ;; Polyline width for drainage line
 
   (setq arrowLayer "#JRK - RD Drain FLOW")
   (setq arrowColor 4)
@@ -49,13 +50,14 @@
   (setq txtHgt 2000.0)
   (setq txtStyle "1000-T2")
   (setq txtWidth 0.5)
+  (setq txtPos   "Up")         ;; Default Pipe Text Position: "Up" (Above line) or "Down" (Below line)
 
   (setq mlLayer     "#JRK - RD Drain Text IL")
   (setq mlStyle     "1000-T2")             
   (setq mlText      "{\\W0.5;SIL00.00}")   
   (setq mlJustify   "Right")               
   (setq mlSide      "Right")               
-  (setq mlLeadLen   3000.0)                
+  (setq mlLeadLen   6000.0)    ;; Extended so MLeader sits farther out
   (setq mlLandDist  2000.0)                
   (setq mlArrowSize 2000.0)                
   (setq mlLandGap   1000.0)                
@@ -69,9 +71,10 @@
   ;; =========================================================================
 
   (vl-load-com)
-  (setq sysVars '("CMDECHO" "CMLEADERSTYLE" "CLAYER")
-        sysVals (mapcar 'getvar sysVars)
-        tempEnts nil)
+  (setq sysVars    '("CMDECHO" "CMLEADERSTYLE" "CLAYER" "UCSFOLLOW")
+        sysVals    (mapcar 'getvar sysVars)
+        ucsChanged nil
+        tempEnts   nil)
 
   (defun mk-temp (data)
     (if (entmake data) (setq tempEnts (cons (entlast) tempEnts)))
@@ -84,11 +87,25 @@
     (setq tempEnts nil)
   )
 
-  (defun draw-split-hud ( / idx pStart pEnd pMid lockedM limitPt perpAng
+  ;; Helper to restore UCS to Previous and reset system variables
+  (defun restore-session ()
+    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
+    (clear-temp)
+    (if ucsChanged
+      (progn
+        (command "_.UCS" "_Previous")
+        (setq ucsChanged nil)
+      )
+    )
+    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+  )
+
+  (defun draw-split-hud ( / idx pStart pEnd pMid lockedM limitPt perpAng txtPreviewAng
                             t1 t2 tPt tickLen stepM dTick)
     (clear-temp)
-    (setq perpAng (+ txtAngRad (/ pi 2.0))
-          tickLen (* txtHgt 1.8))
+    (setq perpAng       (+ txtAngRad (/ pi 2.0))
+          txtPreviewAng (if (= (strcase txtPos) "DOWN") (- txtAngRad (/ pi 2.0)) perpAng)
+          tickLen       (* txtHgt 1.8))
 
     (setq idx 0)
     (while (< idx (1- (length nodePts)))
@@ -103,11 +120,11 @@
                      (list 10 (car pStart) (cadr pStart))
                      (list 10 (car pEnd) (cadr pEnd))))
       (mk-temp (list '(0 . "CIRCLE") (cons 8 sumpLayer) '(62 . 3) (cons 10 pEnd) (cons 40 (* sumpRad 1.2))))
-      (setq tPt (polar pMid perpAng (* txtHgt 1.2)))
+      (setq tPt (polar pMid txtPreviewAng (* txtHgt (if (= (strcase txtPos) "DOWN") 1.8 1.2))))
       (mk-temp (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 textLayer) '(62 . 3) '(100 . "AcDbMText")
                      (list 10 (car tPt) (cadr tPt) 0.0)
                      (cons 40 (* txtHgt 0.9)) '(41 . 0.0) '(71 . 8) '(72 . 1)
-                     (cons 1 (strcat "{\\W0.6;LOCKED: " (itoa lockedM) "m}"))
+                     (cons 1 (strcat "{\\W0.6;LOCKED: " (itoa lockedM) "m (" (strcase txtPos) ")}"))
                      (cons 7 txtStyle) (cons 50 txtAngRad)
                      (list 11 (cos txtAngRad) (sin txtAngRad) 0.0)))
       (setq idx (1+ idx))
@@ -168,7 +185,7 @@
     (mk-temp (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 textLayer) '(62 . 1) '(100 . "AcDbMText")
                    (list 10 (car tPt) (cadr tPt) 0.0)
                    (cons 40 (* txtHgt 1.15)) '(41 . 0.0) '(71 . 8) '(72 . 1)
-                   (cons 1 (strcat "{\\W0.65;" (rtos maxSegM 2 0) "m MAX LIMIT}"))
+                   (cons 1 (strcat "{\\W0.65;" (rtos maxSegM 2 0) "m MAX LIMIT [TEXT: " (strcase txtPos) "]}"))
                    (cons 7 txtStyle) (cons 50 txtAngRad)
                    (list 11 (cos txtAngRad) (sin txtAngRad) 0.0)))
   )
@@ -340,16 +357,6 @@
     (force-mleader-text newEnt str)
   )
 
-  (defun text-blocked-p (pt / h ss)
-    (setq h (* txtHgt 2.0))
-    (setq ss (ssget "_CP"
-                    (list (trans (list (- (car pt) h) (- (cadr pt) h) 0.0) 0 1)
-                          (trans (list (+ (car pt) h) (- (cadr pt) h) 0.0) 0 1)
-                          (trans (list (+ (car pt) h) (+ (cadr pt) h) 0.0) 0 1)
-                          (trans (list (- (car pt) h) (+ (cadr pt) h) 0.0) 0 1))
-                    '((0 . "TEXT,MTEXT"))))
-    (if ss T nil))
-
   ;; -------------------------------------------------------------------------
   ;; DUAL-ENGINE MULTILEADER GENERATOR (Works in ALL Drawings & UCS States)
   ;; -------------------------------------------------------------------------
@@ -462,14 +469,24 @@
     (if (not ok) (make-il-basic sPt)))
 
   (defun *error* (msg)
-    (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
-    (clear-temp)
-    (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+    (restore-session)
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
       (princ (strcat "\nAction Cancelled: " msg)))
     (princ))
 
+  ;; -------------------------------------------------------------------------
+  ;; INITIALIZE LAYERS, STYLES & SWITCH UCS TO WORLD
+  ;; -------------------------------------------------------------------------
   (setvar "CMDECHO" 0)
+  (setvar "UCSFOLLOW" 0)
+
+  (if (= (getvar "WORLDUCS") 0)
+    (progn
+      (command "_.UCS" "_World")
+      (setq ucsChanged T)
+    )
+  )
+
   (ensure-layer drainLayer drainColor)
   (ensure-layer arrowLayer arrowColor)
   (ensure-layer sumpLayer  sumpColor)
@@ -489,6 +506,9 @@
       (setq currCode (getstring T (strcat "\nStarting Code <" defCode ">: "))) (if (= currCode "") (setq currCode defCode))
       (setq size (getstring T (strcat "\nSize <" defSize ">: ")))             (if (= size "") (setq size defSize))
       (setq grad (getstring T (strcat "\nGradient <" defGrad ">: ")))         (if (= grad "") (setq grad defGrad))
+      (initget "Up Down")
+      (setq ans (getkword (strcat "\nDrain Text Position [Up/Down] <" txtPos ">: ")))
+      (if ans (setq txtPos ans))
       (initget "Left Right")
       (setq ans (getkword (strcat "\nSIL Text Justification [Left/Right] <" mlJustify ">: ")))
       (if ans (setq mlJustify ans))
@@ -499,11 +519,22 @@
   (setq sumpCache (scan-sumps) silCache (scan-sils))
   (setq history nil loop T maxDist (* maxSegM unitsPerM))
 
+  ;; -------------------------------------------------------------------------
+  ;; MAIN INTERACTIVE LOOP
+  ;; -------------------------------------------------------------------------
   (while loop
-    (initget "Side Justify Undo")
-    (setq pt1 (getpoint (strcat "\nClick Start Point of Drain [Side/Justify/Undo] <Exit> (Next:" currCode ", Side:" mlSide ", Justify:" mlJustify "): ")))
+    (initget "Text Up Down Side Justify Undo")
+    (setq pt1 (getpoint (strcat "\nClick Start Point of Drain [Text/Up/Down/Side/Justify/Undo] <Exit> (Next:" currCode ", Text:" txtPos ", Side:" mlSide ", Justify:" mlJustify "): ")))
     (cond
       ((null pt1) (setq loop nil))
+
+      ((= pt1 "Text")
+       (setq txtPos (if (= (strcase txtPos) "UP") "Down" "Up"))
+       (princ (strcat "\n>> Drain Text Position set to: " txtPos " (" (if (= (strcase txtPos) "UP") "Above" "Below") " line)")))
+
+      ((or (= pt1 "Up") (= pt1 "Down"))
+       (setq txtPos pt1)
+       (princ (strcat "\n>> Drain Text Position set to: " txtPos " (" (if (= (strcase txtPos) "UP") "Above" "Below") " line)")))
 
       ((= pt1 "Justify")
        (setq mlJustify (if (= (strcase mlJustify) "RIGHT") "Left" "Right"))
@@ -526,8 +557,23 @@
          (princ "\n>> Nothing to undo.")))
 
       (T
-       (initget "Undo")
-       (setq pt2 (getpoint pt1 "\nClick End Point of Drain [Undo] <Cancel>: "))
+       ;; Allow toggling Text (Up/Down) at the End Point prompt as well
+       (setq pickedEnd nil)
+       (while (not pickedEnd)
+         (initget "Text Up Down Undo")
+         (setq pt2 (getpoint pt1 (strcat "\nClick End Point of Drain [Text/Up/Down/Undo] <Cancel> (Text:" txtPos "): ")))
+         (cond
+           ((= pt2 "Text")
+            (setq txtPos (if (= (strcase txtPos) "UP") "Down" "Up"))
+            (princ (strcat "\n>> Drain Text Position set to: " txtPos " (" (if (= (strcase txtPos) "UP") "Above" "Below") " line)")))
+           ((or (= pt2 "Up") (= pt2 "Down"))
+            (setq txtPos pt2)
+            (princ (strcat "\n>> Drain Text Position set to: " txtPos " (" (if (= (strcase txtPos) "UP") "Above" "Below") " line)")))
+           (T
+            (setq pickedEnd T))
+         )
+       )
+
        (if (or (null pt2) (= pt2 "Undo"))
          (princ "\n>> Cancelled point.")
          (progn
@@ -556,10 +602,10 @@
                      (draw-split-hud)
 
                      (setq remDistM (/ (distance currPt pt2) unitsPerM))
-                     (initget "Auto Done Undo")
+                     (initget "Auto Done Text Up Down Undo")
                      (setq pPick (getpoint (trans currPt 0 1)
                                            (strcat "\nRemaining: " (rtos remDistM 2 1)
-                                                   "m. Click party wall before RED 30m mark [Auto/Done/Undo] <Auto>: ")))
+                                                   "m (Text:" txtPos "). Click party wall before RED 30m mark [Auto/Done/Text/Up/Down/Undo] <Auto>: ")))
                      (cond
                        ((or (null pPick) (= pPick "Auto"))
                         (setq numRem  (max 1 (fix (+ (/ (distance currPt pt2) maxDist) 0.9999)))
@@ -573,6 +619,14 @@
 
                        ((= pPick "Done")
                         (setq splitLoop nil))
+
+                       ((= pPick "Text")
+                        (setq txtPos (if (= (strcase txtPos) "UP") "Down" "Up"))
+                        (princ (strcat "\n>> Drain Text Position switched to: " txtPos " (" (if (= (strcase txtPos) "UP") "Above" "Below") " line)")))
+
+                       ((or (= pPick "Up") (= pPick "Down"))
+                        (setq txtPos pPick)
+                        (princ (strcat "\n>> Drain Text Position switched to: " txtPos " (" (if (= (strcase txtPos) "UP") "Above" "Below") " line)")))
 
                        ((= pPick "Undo")
                         (if (> (length nodePts) 1)
@@ -635,10 +689,11 @@
                        linePt1  (polar pA ang sumpRad)
                        linePt2  (polar pB (+ ang pi) sumpRad))
 
-                 (mk (list '(0 . "LINE") '(100 . "AcDbEntity") '(100 . "AcDbLine")
-                           (cons 8 drainLayer)
-                           (list 10 (car linePt1) (cadr linePt1) 0.0)
-                           (list 11 (car linePt2) (cadr linePt2) 0.0)))
+                 ;; Drainage Line created as LWPOLYLINE
+                 (mk (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 drainLayer)
+                           '(100 . "AcDbPolyline") '(90 . 2) '(70 . 0) (cons 43 drainWidth)
+                           (list 10 (car linePt1) (cadr linePt1))
+                           (list 10 (car linePt2) (cadr linePt2))))
 
                  (setq arrowP1 (polar segMid (+ ang (* pi 0.85)) arrowSize)
                        arrowP2 (polar segMid (- ang (* pi 0.85)) arrowSize))
@@ -665,11 +720,9 @@
                           distAbove (* txtHgt 0.25)
                           distBelow (* txtHgt 1.25))))
 
-                 (setq pTextAbove   (polar segMid (+ txtAngRad (/ pi 2.0)) distAbove)
-                       pTextBelow   (polar segMid (- txtAngRad (/ pi 2.0)) distBelow)
-                       blockedAbove (text-blocked-p pTextAbove)
-                       blockedBelow (text-blocked-p pTextBelow))
-                 (setq pText (if (and blockedAbove (not blockedBelow)) pTextBelow pTextAbove))
+                 (setq pTextAbove (polar segMid (+ txtAngRad (/ pi 2.0)) distAbove)
+                       pTextBelow (polar segMid (- txtAngRad (/ pi 2.0)) distBelow)
+                       pText      (if (= (strcase txtPos) "DOWN") pTextBelow pTextAbove))
 
                  (setq mtextStr (strcat "{\\W" (rtos txtWidth 2 4) ";" str "}"))
                  (mk (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 textLayer) '(100 . "AcDbMText")
@@ -686,11 +739,12 @@
 
                (setq history (cons (cons stepEnts prevCode) history))
                (if (> numSeg 1)
-                 (princ (strcat "\nSuccess! Split into " (itoa numSeg) " custom party-wall segments."))
-                 (princ "\nSuccess! Pipe generated."))))))))
+                 (princ (strcat "\nSuccess! Split into " (itoa numSeg) " custom party-wall polyline segments (Text: " txtPos ")."))
+                 (princ (strcat "\nSuccess! Drain polyline generated (Text: " txtPos ").")))))))))
   )
 
-  (mapcar '(lambda (v x) (if x (setvar v x))) sysVars sysVals)
+  ;; Restore previous UCS and system variables upon exit
+  (restore-session)
   (princ)
 )
 
