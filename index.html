@@ -248,6 +248,565 @@
       return str;
     }
 
+    // =============================================================
+    // SMART SHEET ENGINE
+    //   1. seBuildTable    : finds the true header block (multi-row / merged
+    //                        cells), labels every column, builds clean rows.
+    //   2. seAnalyzeTable  : (a) classifies the file as DRAINAGE / SEWERAGE /
+    //                        HYBRID / UNKNOWN from several independent signals,
+    //                        (b) maps each engineering column by header text
+    //                        AND by what the cells actually contain,
+    //                        (c) works out how split ID columns combine
+    //                        (e.g. "MH" + "1" -> MH-01, "A" + "1" -> A01).
+    // All functions are pure so they can be unit-tested outside the browser.
+    // =============================================================
+    const SE_NUM_RE = /^-?\d+(\.\d+)?$/;
+    const SE_MARKER_RE = /^\(\s*\d+\s*\)$/;
+    const SE_UNIT_RE = /^\(?\s*(m|mm|ha|m2|m\u00b2|m3\/min|m3\/s|m\/s|m\/sec|m\/km|lps|l\/s|yr|yrs|min|mins|mm\/hr|%|nos?\.?)\s*\)?$/i;
+    const SE_MH_FULL_RE = /^MH\s*[-_.]?\s*\d+[A-Za-z]?$/i;
+
+    const seText = (v) => String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim();
+
+    const seColLetter = (idx) => {
+      let n = idx + 1;
+      let s = '';
+      while (n > 0) {
+        const m = (n - 1) % 26;
+        s = String.fromCharCode(65 + m) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    };
+
+    // Joins a split ID ("MH" + "1", "A" + "1", "1" + "A") into one CAD ID.
+    const composeId = (mainRaw, subRaw) => {
+      const main = String(mainRaw === undefined || mainRaw === null ? '' : mainRaw).trim();
+      const sub = String(subRaw === undefined || subRaw === null ? '' : subRaw).trim().replace(/\.0+$/, '');
+      if (!sub) return main;
+      if (!main) return sub;
+      if (/^MH$/i.test(main)) return `MH-${sub}`;
+      if (/^[A-Za-z]{1,4}$/.test(main) && /^[A-Za-z0-9]+$/.test(sub)) {
+        return sub.toUpperCase().startsWith(main.toUpperCase()) ? sub : `${main}${sub}`;
+      }
+      if (/^\d+$/.test(main) && /^[A-Za-z]{1,2}$/.test(sub)) return `${main}${sub.toUpperCase()}`;
+      return main;
+    };
+
+    const SE_HEADER_KEY_RES = [
+      /manhole\s*no|mh\s*no|drain\s*name|drain\s*id|pipe\s*id|sewer\s*id|^no\.?$|^id$/,
+      /\bsize\b|\bdia(meter)?\b|u-?drain/,
+      /\blength\b|\blen\b/,
+      /\bgrad(e|ient)?\b|\bslope\b/,
+      /invert|\bil\b/,
+      /ground\s*level|\bgl\b/,
+      /\bdepth\b/,
+      /back\s*-?\s*drop/,
+      /pipe\s*type|material/,
+      /capacity/,
+      /velocity/,
+      /type\s*of\s*(drain|building)/,
+    ];
+
+    const seHeaderRowScore = (cells) => {
+      let hit = 0;
+      SE_HEADER_KEY_RES.forEach(re => {
+        if (cells.some(c => re.test(String(c).toLowerCase()))) hit++;
+      });
+      return hit;
+    };
+
+    // True when a row looks like real data rather than a header / note row.
+    const seIsDataLikeRow = (cells) => {
+      if (cells.some(c => SE_MH_FULL_RE.test(c))) return true;
+      const nums = cells.filter(c => SE_NUM_RE.test(c));
+      if (nums.length === 0) return false;
+      // a bare counter row "1 2 3 4 ..." is a header marker row, not data
+      const vals = nums.map(Number);
+      const isCounterRow = vals.length >= 2 && vals.every((v, i) => (i === 0 ? v === 1 : v === vals[i - 1] + 1));
+      return !isCounterRow;
+    };
+
+    function seBuildTable({ aoa, merges = [], rowOffset = 0, colOffset = 0, sheetName = '', fileName = '' }) {
+      const rowsText = aoa.map(r => (r || []).map(seText));
+      if (rowsText.length === 0) return null;
+
+      // 1. Locate the "leaf" header row = the row carrying the most engineering keywords
+      const scanLimit = Math.min(rowsText.length, 45);
+      let leafRow = -1;
+      let bestScore = 0;
+      for (let i = 0; i < scanLimit; i++) {
+        const sc = seHeaderRowScore(rowsText[i].filter(Boolean));
+        if (sc > bestScore) {
+          bestScore = sc;
+          leafRow = i;
+        }
+      }
+      if (leafRow < 0 || bestScore < 2) {
+        leafRow = rowsText.findIndex(r => r.filter(Boolean).length >= 3);
+        if (leafRow < 0) return null;
+      }
+
+      // 2. Extend downward over unit rows "(m)", counter rows "(1)(2)", etc.
+      let lastHdr = leafRow;
+      for (let r = leafRow + 1; r < Math.min(rowsText.length, leafRow + 10); r++) {
+        const cells = rowsText[r].filter(Boolean);
+        if (cells.length === 0) continue;
+        if (seIsDataLikeRow(cells)) break;
+        if (cells.length === 1 && cells[0].length > 12) break;
+        lastHdr = r;
+      }
+
+      const nCols = rowsText.reduce((mx, r) => Math.max(mx, r.length), 0);
+      const H = [];
+      for (let r = leafRow; r <= lastHdr; r++) {
+        H.push(Array.from({ length: nCols }, (_, c) => rowsText[r][c] || ''));
+      }
+
+      // 3. Spread merged header cells over every cell they cover
+      merges.forEach(m => {
+        const origin = rowsText[m.s.r] ? rowsText[m.s.r][m.s.c] : '';
+        if (!origin) return;
+        if (m.e.c - m.s.c + 1 > 14) return; // wide title banners are not column labels
+        for (let r = Math.max(m.s.r, leafRow); r <= Math.min(m.e.r, lastHdr); r++) {
+          for (let c = m.s.c; c <= m.e.c; c++) {
+            if (c < nCols && !H[r - leafRow][c]) H[r - leafRow][c] = origin;
+          }
+        }
+      });
+
+      // 4. Build one readable label per column
+      const usable = (t) => t && !SE_MARKER_RE.test(t) && !SE_UNIT_RE.test(t) && !/^1\s*:\s*x$/i.test(t) && !(t.length === 1 && /[A-Za-z0-9]/.test(t));
+      const labels = [];
+      for (let c = 0; c < nCols; c++) {
+        const parts = [];
+        H.forEach(hr => {
+          const t = hr[c];
+          if (usable(t) && !parts.includes(t)) parts.push(t);
+        });
+        if (parts.length === 0) {
+          // label sitting a few rows above the detected leaf row
+          for (let r = leafRow - 1; r >= Math.max(0, leafRow - 3); r--) {
+            const t = rowsText[r][c];
+            if (usable(t) && t.length <= 40 && !SE_NUM_RE.test(t)) {
+              parts.push(t);
+              break;
+            }
+          }
+        }
+        labels.push(parts.join(' '));
+      }
+
+      // 5. Data rows
+      const dataRows = [];
+      for (let r = lastHdr + 1; r < rowsText.length; r++) {
+        if (rowsText[r].some(Boolean)) dataRows.push(rowsText[r]);
+      }
+
+      const keepCols = [];
+      for (let c = 0; c < nCols; c++) {
+        if (labels[c] || dataRows.some(row => row[c])) keepCols.push(c);
+      }
+
+      const usedKeys = new Set();
+      const headers = [];
+      const headerInfo = [];
+      keepCols.forEach(c => {
+        const letter = seColLetter(c + colOffset);
+        let key = labels[c] || `Col ${letter}`;
+        if (usedKeys.has(key)) key = `${key} [${letter}]`;
+        usedKeys.add(key);
+        headers.push(key);
+        headerInfo.push({ key, label: labels[c] || '', letter, index: c });
+      });
+
+      const rows = dataRows.map(row => {
+        const obj = {};
+        keepCols.forEach((c, i) => {
+          obj[headers[i]] = row[c] || '';
+        });
+        return obj;
+      });
+
+      const metaText = [
+        fileName,
+        sheetName,
+        ...rowsText.slice(0, leafRow).map(r => r.filter(Boolean).join(' ')),
+      ].join(' ');
+
+      return { headers, rows, headerInfo, metaText, headerRow: leafRow + rowOffset + 1 };
+    }
+
+    function seBuildTableFromSheet(ws, { sheetName = '', fileName = '' } = {}) {
+      if (!ws || !ws['!ref']) return null;
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, blankrows: true });
+      const merges = (ws['!merges'] || [])
+        .map(m => ({
+          s: { r: m.s.r - range.s.r, c: m.s.c - range.s.c },
+          e: { r: m.e.r - range.s.r, c: m.e.c - range.s.c },
+        }))
+        .filter(m => m.s.r >= 0 && m.s.c >= 0);
+      return seBuildTable({ aoa, merges, rowOffset: range.s.r, colOffset: range.s.c, sheetName, fileName });
+    }
+
+    // -- Column profiling (what do the cells actually contain?) --
+    function seProfile(rows, key) {
+      const vals = [];
+      for (let i = 0; i < Math.min(rows.length, 400); i++) {
+        const v = seText(rows[i][key]);
+        if (v !== '' && v !== '-') vals.push(v);
+      }
+      const n = vals.length;
+      const nums = vals
+        .map(v => (SE_NUM_RE.test(v.replace(/,/g, '')) ? parseFloat(v.replace(/,/g, '')) : NaN))
+        .filter(x => !isNaN(x));
+      const sorted = [...nums].sort((a, b) => a - b);
+      const uniq = new Set(vals).size;
+      return {
+        n,
+        vals,
+        numRatio: n ? nums.length / n : 0,
+        median: sorted.length ? sorted[Math.floor(sorted.length / 2)] : NaN,
+        unique: uniq,
+        uniqueRatio: n ? uniq / n : 0,
+        ratio: (re) => (n ? vals.filter(v => re.test(v)).length / n : 0),
+      };
+    }
+
+    const SE_FIELD_SPECS = {
+      size: {
+        pos: [[/u-?drain\s*(width|size)|pipe\s*size|drain\s*size|pipe\s*dia|\bdia(meter)?\b|\bsize\b|\u00f8|\u2300/, 10]],
+        neg: /capacity|velocity|roughness|\bks\b|time|area|coeff|rainfall|intensity|flow|height|peak|type/,
+      },
+      length: {
+        pos: [[/\blength\b|\blen\b/, 10]],
+        neg: /overland|time|roughness|\bks\b|capacity|velocity|travel|flow\s*len/,
+      },
+      gradient: {
+        pos: [[/\bgrad(e|ient)?\b|\bslope\b|1\s*:\s*x|\bfall\b/, 10]],
+        neg: /hydraulic|peak|velocity|capacity|\bflow\b|rainfall|intensity|check/,
+      },
+      gl: {
+        pos: [[/ground\s*level|\bgl\b|cover\s*level|surface\s*level|\brl\b/, 10]],
+        adj: [[/upstream|u\/s/, 3], [/downstream|d\/s/, -3]],
+      },
+      il: {
+        pos: [[/invert\s*level|\binvert\b|\bil\b/, 10]],
+        neg: /upstream|downstream|u\/s|d\/s|check|soffit/,
+      },
+      drainIlUp: {
+        pos: [[/(invert|\bil\b).*(upstream|u\/s)|(upstream|u\/s).*(invert|\bil\b)/, 12]],
+      },
+      drainIlDown: {
+        pos: [[/(invert|\bil\b).*(downstream|d\/s)|(downstream|d\/s).*(invert|\bil\b)/, 12]],
+      },
+      depth: {
+        pos: [[/depth\s*of\s*manhole|\bmh\s*depth|\bdepth\b/, 10]],
+        adj: [[/manhole|\bmh\b/, 3], [/upstream/, 1], [/downstream/, -2]],
+      },
+      pipeType: {
+        pos: [[/pipe\s*type|type\s*of\s*pipe|pipe\s*material|\bmaterial\b|\bmat\b/, 10]],
+        neg: /type\s*of\s*(drain|building)/,
+      },
+      backdrop: {
+        pos: [[/back\s*-?\s*drop|\bb\/d\b/, 10], [/\bdrop\b/, 5]],
+        neg: /capacity|velocity/,
+      },
+    };
+
+    const SE_MATERIAL_RE = /^(VCP|RCP|HDPE|UPVC|PVC|DIP|DI|GRP|PE|CI|ST|STEEL|PP|ACP|CONCRETE)\b/i;
+
+    function seHeaderScore(field, label) {
+      const spec = SE_FIELD_SPECS[field];
+      const t = String(label || '').toLowerCase();
+      if (!t) return 0;
+      if (spec.neg && spec.neg.test(t)) return 0;
+      let best = 0;
+      spec.pos.forEach(([re, w]) => {
+        if (re.test(t)) best = Math.max(best, w);
+      });
+      if (best === 0) return 0;
+      (spec.adj || []).forEach(([re, w]) => {
+        if (re.test(t)) best += w;
+      });
+      return best;
+    }
+
+    function seContentScore(field, prof, nextProf) {
+      if (!prof || prof.n === 0) return 0;
+      const isLevel = ['gl', 'il', 'drainIlUp', 'drainIlDown', 'depth', 'backdrop'].includes(field);
+      if (isLevel) return prof.numRatio >= 0.6 ? 3 : -8;
+      if (field === 'size') {
+        if (prof.numRatio < 0.6) return -8;
+        return prof.median >= 40 && prof.median <= 3000 ? 4 : -3;
+      }
+      if (field === 'length') {
+        if (prof.numRatio < 0.6) return -8;
+        return prof.median >= 0.2 && prof.median <= 500 ? 3 : -2;
+      }
+      if (field === 'gradient') {
+        if (prof.numRatio >= 0.6) {
+          if (prof.median >= 20) return 3;
+          // 3-cell layout "1 | : | 200"
+          if (prof.ratio(/^1$/) >= 0.6 && nextProf && nextProf.ratio(/^:$/) >= 0.6) return 3;
+          return -3;
+        }
+        return prof.ratio(/^1\s*[:\/]\s*\d+/) >= 0.6 ? 3 : -6;
+      }
+      if (field === 'pipeType') {
+        if (prof.numRatio >= 0.6) return -8;
+        return prof.ratio(SE_MATERIAL_RE) >= 0.5 ? 6 : 0;
+      }
+      return 0;
+    }
+
+    const SE_ID_HDR_RE = /manhole|mh\s*no|drain\s*name|drain\s*id|pipe\s*id|sewer\s*id|\bid\b|\bno\.?(\s|$)|\bname\b|node|chamber|structure/;
+
+    // Works out which column(s) form the ID, and whether two columns must be joined.
+    function seDetectIdColumns(headers, headerInfo, rows, profile, excluded) {
+      const cands = [];
+      headers.forEach((h, i) => {
+        if (i < 10 && !excluded.has(h)) cands.push(i);
+      });
+
+      const kinds = {};
+      cands.forEach(i => {
+        const p = profile(headers[i]);
+        kinds[i] = {
+          p,
+          label: String((headerInfo[i] && headerInfo[i].label) || headers[i]).toLowerCase(),
+          mhFull: p.ratio(SE_MH_FULL_RE),
+          mhPrefix: p.ratio(/^MH$/i),
+          prefix: p.unique <= 8 ? p.ratio(/^[A-Za-z]{1,4}$/) : 0,
+          int: p.ratio(/^\d{1,4}$/),
+          alnum: p.ratio(/^([A-Za-z]{1,4}\s*[-_]?\s*\d+[A-Za-z]?|\d+[A-Za-z]{1,2})$/),
+          letter1: p.ratio(/^[A-Za-z]$/),
+        };
+        kinds[i].hdr = SE_ID_HDR_RE.test(kinds[i].label);
+      });
+
+      const options = [];
+
+      cands.forEach(i => {
+        const k = kinds[i];
+        if (k.p.n < 2) return;
+        if (k.mhFull >= 0.5) options.push({ score: 22 + (k.hdr ? 10 : 0), main: i, sub: -1 });
+        else if (k.alnum >= 0.5) options.push({ score: 14 + (k.hdr ? 10 : 0), main: i, sub: -1 });
+        else if (k.int >= 0.5 && k.hdr) options.push({ score: 12, main: i, sub: -1 });
+        else if (k.hdr && k.p.uniqueRatio >= 0.8 && k.numRatio !== 1) options.push({ score: 8, main: i, sub: -1 });
+      });
+
+      cands.forEach(i => {
+        const a = kinds[i];
+        if (a.p.n < 2) return;
+        [1, 2].forEach(step => {
+          const j = i + step;
+          if (!kinds[j] || kinds[j].p.n < 2) return;
+          const b = kinds[j];
+          let base = 0;
+          if (a.prefix >= 0.5 && b.int >= 0.5) base = 26;
+          else if (a.prefix >= 0.5 && b.alnum >= 0.5) base = 22;
+          else if (a.int >= 0.5 && b.letter1 >= 0.5) base = 22;
+          if (!base) return;
+
+          let both = 0;
+          for (let r = 0; r < Math.min(rows.length, 400); r++) {
+            if (seText(rows[r][headers[i]]) && seText(rows[r][headers[j]])) both++;
+          }
+          if (both / Math.max(a.p.n, b.p.n) < 0.5) return;
+
+          const hasHdr = a.hdr || b.hdr;
+          const mhPrefix = a.mhPrefix >= 0.5;
+          const subUnique = b.p.uniqueRatio >= 0.5;
+          if (!hasHdr && !mhPrefix && !subUnique) return;
+
+          options.push({
+            score: base + (hasHdr ? 10 : 0) + (mhPrefix ? 8 : 0) + b.p.uniqueRatio * 6 - (step - 1),
+            main: i,
+            sub: j,
+          });
+        });
+      });
+
+      if (options.length === 0) {
+        const fallback = cands.find(i => kinds[i] && kinds[i].hdr);
+        return fallback === undefined ? null : { main: fallback, sub: -1, score: 1 };
+      }
+      options.sort((x, y) => (y.score - x.score) || (x.main - y.main));
+      return options[0];
+    }
+
+    const SE_SEWER_SIGNALS = [
+      [/sewer(age)?|sewage/, 8, 'Sewer / Sewage wording'],
+      [/\biwk\b/, 6, 'IWK'],
+      [/manhole/, 5, 'Manhole headers'],
+      [/peak\s*factor|cumulative\s*peak\s*flow/, 6, 'Peak Factor / Peak Flow'],
+      [/population|\(\s*pe\s*\)|accumulative\s*pe|\bpe\b/, 5, 'Population (PE)'],
+      [/back\s*-?\s*drop/, 4, 'Backdrop'],
+      [/vcp|vitrified/, 2, 'VCP pipe'],
+      [/reticulation/, 3, 'Reticulation'],
+    ];
+    const SE_DRAIN_SIGNALS = [
+      [/storm\s*(water\s*)?drain(age)?|stormwater/, 8, 'Storm Drainage wording'],
+      [/\bmasma\b|\bmsma\b/, 6, 'MSMA / MASMA'],
+      [/catchment/, 5, 'Catchment'],
+      [/runoff/, 5, 'Runoff coefficient'],
+      [/time\s*of\s*concentration|overland/, 5, 'Time of concentration'],
+      [/rainfall|intensity|return\s*period/, 4, 'Rainfall / ARI'],
+      [/u-?drain/, 6, 'U-Drain'],
+      [/drain\s*name|drain\s*id/, 6, 'Drain Name'],
+      [/type\s*of\s*drain|culvert/, 5, 'Type of Drain'],
+      [/crossing/, 2, 'Crossing'],
+    ];
+
+    function seAnalyzeTable({ headers, rows, headerInfo = null, metaText = '' }) {
+      const info = headerInfo && headerInfo.length === headers.length
+        ? headerInfo
+        : headers.map((h, i) => ({ key: h, label: h, letter: seColLetter(i), index: i }));
+
+      const profCache = {};
+      const profile = (key) => {
+        if (!profCache[key]) profCache[key] = seProfile(rows, key);
+        return profCache[key];
+      };
+
+      const mapping = {
+        drainId: '', drainIdSub: '', size: '', length: '', gradient: '',
+        drainIlUp: '', drainIlDown: '', sewerId: '', sewerIdSub: '',
+        gl: '', il: '', depth: '', pipeType: '', backdrop: '',
+      };
+
+      // -- A. Numeric / attribute columns: header text + cell content, best-first --
+      const cands = [];
+      Object.keys(SE_FIELD_SPECS).forEach(field => {
+        headers.forEach((key, i) => {
+          const hs = seHeaderScore(field, info[i].label || key);
+          if (hs <= 0) return;
+          const next = headers[i + 1] ? profile(headers[i + 1]) : null;
+          const total = hs + seContentScore(field, profile(key), next);
+          if (total >= 8) cands.push({ field, key, idx: i, score: total });
+        });
+      });
+      cands.sort((a, b) => (b.score - a.score) || (a.idx - b.idx));
+      const usedCols = new Set();
+      cands.forEach(c => {
+        if (mapping[c.field] || usedCols.has(c.key)) return;
+        mapping[c.field] = c.key;
+        usedCols.add(c.key);
+      });
+
+      // Gradient laid out as three cells "1 | : | 200" -> use the denominator cell
+      if (mapping.gradient) {
+        const gi = headers.indexOf(mapping.gradient);
+        const p0 = profile(headers[gi]);
+        const p1 = headers[gi + 1] ? profile(headers[gi + 1]) : null;
+        const p2 = headers[gi + 2] ? profile(headers[gi + 2]) : null;
+        if (p0.ratio(/^1$/) >= 0.6 && p1 && p1.ratio(/^:$/) >= 0.6 && p2 && p2.numRatio >= 0.6) {
+          mapping.gradient = headers[gi + 2];
+        }
+      }
+
+      // GL / IL sanity: ground level must sit above invert level
+      const reasons = [];
+      const notes = [];
+      if (mapping.gl && mapping.il) {
+        let ok = 0;
+        let bad = 0;
+        rows.slice(0, 400).forEach(r => {
+          const g = parseFloat(seText(r[mapping.gl]));
+          const l = parseFloat(seText(r[mapping.il]));
+          if (!isNaN(g) && !isNaN(l)) (g >= l ? ok++ : bad++);
+        });
+        if (bad > ok && bad >= 2) {
+          const tmp = mapping.gl;
+          mapping.gl = mapping.il;
+          mapping.il = tmp;
+          notes.push('GL and IL columns were swapped after checking the levels (GL must be above IL)');
+        }
+      }
+
+      // -- B. ID column(s) --
+      const idPick = seDetectIdColumns(headers, info, rows, profile, usedCols);
+      const idInfo = { kind: 'none', mainKey: '', subKey: '', samples: [] };
+      if (idPick) {
+        mapping.drainId = mapping.sewerId = headers[idPick.main];
+        idInfo.mainKey = headers[idPick.main];
+        idInfo.kind = 'single';
+        if (idPick.sub >= 0) {
+          mapping.drainIdSub = mapping.sewerIdSub = headers[idPick.sub];
+          idInfo.subKey = headers[idPick.sub];
+          idInfo.kind = 'pair';
+        }
+      }
+
+      const composedIds = [];
+      rows.slice(0, 400).forEach(r => {
+        const id = composeId(seText(r[mapping.sewerId]), mapping.sewerIdSub ? seText(r[mapping.sewerIdSub]) : '');
+        if (id && !/^PE\s+FROM/i.test(id)) composedIds.push(id);
+      });
+      idInfo.samples = composedIds.filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
+
+      // -- C. Drainage vs Sewerage classification --
+      let sew = 0;
+      let drn = 0;
+      const sewHits = [];
+      const drnHits = [];
+      const corpus = `${metaText} ${info.map(x => x.label || x.key).join(' ')}`.toLowerCase();
+      SE_SEWER_SIGNALS.forEach(([re, w, name]) => { if (re.test(corpus)) { sew += w; sewHits.push(name); } });
+      SE_DRAIN_SIGNALS.forEach(([re, w, name]) => { if (re.test(corpus)) { drn += w; drnHits.push(name); } });
+
+      if (mapping.backdrop) { sew += 2; sewHits.push('Backdrop column'); }
+      if (mapping.drainIlUp && mapping.drainIlDown) { drn += 4; drnHits.push('Invert Level Up/Downstream pair'); }
+
+      const hasSewerCols = Boolean(mapping.gl || mapping.il || mapping.depth);
+      const hasDrainCols = Boolean(mapping.size || mapping.length || mapping.gradient);
+
+      const mhRatio = composedIds.length ? composedIds.filter(v => /^MH/i.test(v)).length / composedIds.length : 0;
+      const drainStyleRatio = composedIds.length
+        ? composedIds.filter(v => !/^MH/i.test(v) && /^([A-Za-z]{1,3}[-\s]?\d+[A-Za-z]?|\d+[A-Za-z]{1,2})$/.test(v)).length / composedIds.length
+        : 0;
+      if (mhRatio >= 0.3) { sew += 8; sewHits.push(`MH IDs in ${Math.round(mhRatio * 100)}% of rows`); }
+      if (drainStyleRatio >= 0.5 && (drn > 0 || (mapping.size && mapping.length))) {
+        drn += 5;
+        drnHits.push(`Drain-style IDs in ${Math.round(drainStyleRatio * 100)}% of rows`);
+      }
+
+      const diff = sew - drn;
+
+      let mode;
+      if (!hasSewerCols && !hasDrainCols) {
+        mode = 'UNKNOWN';
+      } else if (mhRatio >= 0.1 && mhRatio <= 0.9 && drainStyleRatio >= 0.1 && hasSewerCols && hasDrainCols) {
+        mode = 'HYBRID';
+      } else if (Math.max(sew, drn) < 6) {
+        mode = 'UNKNOWN';
+      } else if (Math.abs(diff) < 4) {
+        mode = 'UNKNOWN';
+      } else {
+        mode = diff > 0 ? 'SEWERAGE' : 'DRAINAGE';
+      }
+
+      let confidence = 'NONE';
+      if (mode === 'HYBRID') confidence = 'MEDIUM';
+      else if (mode !== 'UNKNOWN') confidence = Math.abs(diff) >= 12 ? 'HIGH' : (Math.abs(diff) >= 7 ? 'MEDIUM' : 'LOW');
+
+      if (mode === 'SEWERAGE' || mode === 'HYBRID') reasons.push(`Sewerage: ${sewHits.join(', ') || 'none'}`);
+      if (mode === 'DRAINAGE' || mode === 'HYBRID') reasons.push(`Drainage: ${drnHits.join(', ') || 'none'}`);
+      if (mode === 'UNKNOWN') reasons.push(`Not enough evidence (sewerage ${sew} vs drainage ${drn})`);
+
+      return {
+        mapping,
+        mode,
+        confidence,
+        reasons,
+        notes,
+        scores: { sew, drn },
+        idInfo,
+        evidence: { sew: sewHits, drn: drnHits },
+      };
+    }
+
+
     function App() {
       // 0. Theme State (Dark Mode is Default)
       const [theme, setTheme] = useState(() => {
@@ -326,7 +885,11 @@
         backdrop: '',
       });
 
-      const [detectedMode, setDetectedMode] = useState('DRAINAGE');
+      const [detectedMode, setDetectedMode] = useState('UNKNOWN');
+      const [detectionConfidence, setDetectionConfidence] = useState('NONE');
+      const [detectionScores, setDetectionScores] = useState({ sew: 0, drn: 0 });
+      const [detectionNotes, setDetectionNotes] = useState([]);
+      const [idInfo, setIdInfo] = useState({ kind: 'none', mainKey: '', subKey: '', samples: [] });
       const [userDesignMode, setUserDesignMode] = useState('AUTO');
       const [detectionReason, setDetectionReason] = useState('Ready for upload');
 
@@ -353,226 +916,32 @@
       };
 
       // ─────────────────────────────────────────────────────────────
-      // SMART MULTI-SIGNAL DISCIPLINE CLASSIFIER & COLUMN DETECTOR
+      // SMART DISCIPLINE CLASSIFIER & COLUMN DETECTOR
+      // (engine lives in seAnalyzeTable - see SMART SHEET ENGINE above)
       // ─────────────────────────────────────────────────────────────
-      const detectColumns = (headerList, sampleRows = [], metaText = '') => {
-        const mapping = {
-          drainId: '',
-          drainIdSub: '',
-          size: '',
-          length: '',
-          gradient: '',
-          drainIlUp: '',
-          drainIlDown: '',
-          sewerId: '',
-          sewerIdSub: '',
-          gl: '',
-          il: '',
-          depth: '',
-          pipeType: '',
-          backdrop: '',
-        };
+      const detectColumns = (headerList, sampleRows = [], metaText = '', headerInfo = null) => {
+        const res = seAnalyzeTable({ headers: headerList, rows: sampleRows, headerInfo, metaText });
+        const notes = [...res.notes];
 
-        const drainRules = {
-          drainId: [
-            /^(drain\s*name\.?|pipe\s*id\.?|drain\s*id\.?|pipe\s*name|line\s*id|drain\s*no\.?|pipe\s*no\.?|line\s*no\.?)$/i,
-            /^(id|label|mark|tag)$/i,
-          ],
-          size: [
-            /^(u-?drain\s*width.*|size|dia|diameter|pipe\s*size|drain\s*size|pipe\s*dia|width|span|dia\s*\(mm\)|size\s*\(mm\))$/i,
-            /(u-?drain\s*width|dia|diameter|size)/i,
-          ],
-          length: [
-            /^(length|len|pipe\s*len|pipe\s*length|distance|dist|run|length\s*\(m\)|len\s*\(m\))$/i,
-            /(length|len)/i,
-          ],
-          gradient: [
-            /^(grade|gradient|grad|1:?|slope|fall|ratio|gradient\s*\(1:s\))$/i,
-            /(grade|gradient|grad|slope)/i,
-          ],
-          drainIlDown: [
-            /invert\s*level\s*\(\s*downstream\s*\)/i,
-            /(il\s*down|downstream\s*il|invert.*down)/i,
-          ],
-          drainIlUp: [
-            /invert\s*level\s*\(\s*upstream\s*\)/i,
-            /(il\s*up|upstream\s*il|invert.*up)/i,
-          ],
-        };
-
-        const sewerRules = {
-          sewerId: [
-            /^(manhole\s*no\.?|mh\s*no\.?|mh|manhole|sewer\s*id|mh\s*id|node|node\s*id|chamber|structure\s*id)$/i,
-            /(manhole\s*no|mh\s*no|^manhole$)/i,
-            /^(id|label|mark)$/i,
-          ],
-          gl: [
-            /^(gl|ground\s*level|ground\s*level\s*\(\s*upstream\s*\)|ground|cover\s*level|cl|surface\s*level|gl\s*\(m\)|top\s*level|rl\s*gl)$/i,
-            /(ground\s*level|^gl$|cover\s*level)/i,
-          ],
-          il: [
-            /^(il|invert\s*level|invert|sump\s*il|sewer\s*il|il\s*\(m\)|soffit|rl\s*il)$/i,
-            /(invert\s*level|^il$)/i,
-          ],
-          depth: [
-            /^(depth\s*of\s*manhole|depth|mh\s*depth|manhole\s*depth|drop|depth\s*\(m\)|depth\s*\(\s*downstream\s*\))$/i,
-            /(depth)/i,
-          ],
-          pipeType: [
-            /^(pipe\s*type|type\s*of\s*pipe|material|pipe\s*material|mat)$/i,
-            /(pipe\s*type|material)/i,
-          ],
-          backdrop: [
-            /^(backdrop|b\/d\s*il|b\/d|drop\s*height)$/i,
-            /(backdrop|b\/d)/i,
-          ],
-        };
-
-        Object.entries(drainRules).forEach(([field, patterns]) => {
-          for (const pattern of patterns) {
-            const found = headerList.find(h => pattern.test(String(h).trim()));
-            if (found && !mapping[field]) {
-              mapping[field] = found;
-              break;
-            }
-          }
-        });
-
-        Object.entries(sewerRules).forEach(([field, patterns]) => {
-          for (const pattern of patterns) {
-            const found = headerList.find(h => pattern.test(String(h).trim()));
-            if (found && !mapping[field]) {
-              mapping[field] = found;
-              break;
-            }
-          }
-        });
-
-        const genericId = headerList.find(h => /^(id|no\.?|name)$/i.test(String(h).trim()));
-        if (genericId) {
-          if (!mapping.drainId) mapping.drainId = genericId;
-          if (!mapping.sewerId) mapping.sewerId = genericId;
+        // Long Section only exists for sewerage, so never leave a drainage file on SEWSECTION
+        if (res.mode === 'DRAINAGE' && targetTool === 'SEWSECTION') {
+          setTargetTool('CSVUPDATE');
+          notes.push('This is a drainage file and Long Section is sewerage-only, so the tool was switched to CSVUPDATE automatically.');
         }
 
-        // Row-Content ID Detector for merged JRK 'Manhole No.' headers
-        if (sampleRows.length > 0 && headerList.length >= 2) {
-          const c0 = headerList[0];
-          const c1 = headerList[1];
-          const c0HasMH = sampleRows.slice(0, 20).some(r => /^MH$/i.test(String(r[c0] || '').trim()));
-          const c1HasNum = sampleRows.slice(0, 20).some(r => /^\d+(\.\d+)?$/.test(String(r[c1] || '').trim()));
-          if (c0HasMH && c1HasNum) {
-            mapping.sewerId = c0;
-            mapping.sewerIdSub = c1;
-          }
-        }
-
-        if (!mapping.drainId && !mapping.sewerId && headerList.length > 0) {
-          const firstCol = headerList[0];
-          if (firstCol && /empty/i.test(firstCol)) {
-            mapping.drainId = firstCol;
-            mapping.sewerId = firstCol;
-          }
-        }
-
-        if (!mapping.drainId && mapping.sewerId) mapping.drainId = mapping.sewerId;
-        if (!mapping.sewerId && mapping.drainId) mapping.sewerId = mapping.drainId;
-
-        if (mapping.sewerId && !mapping.sewerIdSub && sampleRows.length > 0) {
-          const sIdx = headerList.indexOf(mapping.sewerId);
-          if (sIdx !== -1 && sIdx + 1 < headerList.length) {
-            const nextCol = headerList[sIdx + 1];
-            const hasMhPrefix = sampleRows.slice(0, 20).some(
-              r => /^MH$/i.test(String(r[mapping.sewerId] || '').trim()) && /^\d+(\.\d+)?$/.test(String(r[nextCol] || '').trim())
-            );
-            if (hasMhPrefix) {
-              mapping.sewerIdSub = nextCol;
-            }
-          }
-        }
-
-        if (mapping.drainId && !mapping.drainIdSub && sampleRows.length > 0) {
-          const dIdx = headerList.indexOf(mapping.drainId);
-          if (dIdx !== -1 && dIdx + 1 < headerList.length) {
-            const nextCol = headerList[dIdx + 1];
-            const hasSubLetter = sampleRows.slice(0, 20).some(
-              r => /^\d+$/.test(String(r[mapping.drainId] || '').trim()) && /^[A-Z]$/i.test(String(r[nextCol] || '').trim())
-            );
-            if (hasSubLetter) {
-              mapping.drainIdSub = nextCol;
-            }
-          }
-        }
-
-        // Multi-Signal Scoring (Sewerage vs Drainage)
-        let sewScore = 0;
-        let drnScore = 0;
-        const reasons = [];
-        const allContext = `${metaText} ${headerList.join(' ')}`.toLowerCase();
-
-        if (/(sewer|sewage|iwk|manhole\s*no|manhole\s*details|sewer\s*pipe|population\s*\(pe\)|accumulative\s*pe|peak\s*factor|backdrop)/i.test(allContext)) {
-          sewScore += 8;
-          reasons.push('Sewerage/PE/Manhole headers');
-        }
-        if (/(storm\s*drainage|masma|msma|catchment|coefficient\s*of\s*runoff|overland\s*time|time\s*of\s*concentration|rainfall\s*intensity|u-?drain|drain\s*name|receiveflow)/i.test(allContext)) {
-          drnScore += 8;
-          reasons.push('MSMA/Catchment/Drainage headers');
-        }
-
-        if (headerList.some(h => /^manhole/i.test(String(h).trim()))) sewScore += 5;
-        if (headerList.some(h => /^drain\s*name|pipe\s*id|u-?drain/i.test(String(h).trim()))) drnScore += 5;
-
-        let mhRowCount = 0;
-        let drainRowCount = 0;
-        sampleRows.slice(0, 20).forEach(r => {
-          const sId = String(r[mapping.sewerId] || '').trim();
-          const dId = String(r[mapping.drainId] || '').trim();
-          if (/^MH/i.test(sId)) mhRowCount++;
-          if (/^(\d+[A-Z]|[A-Z]\d+|D\d+|P\d+|CROSSING)/i.test(dId)) drainRowCount++;
-        });
-        if (mhRowCount > 0) {
-          sewScore += 6;
-          reasons.push('MH IDs in rows');
-        }
-        if (drainRowCount > 0) {
-          drnScore += 6;
-          reasons.push('Drain IDs in rows');
-        }
-
-        const hasDrainCols = Boolean(mapping.size || mapping.length || mapping.gradient);
-        const hasSewerCols = Boolean(mapping.gl || mapping.il || mapping.depth);
-
-        let mode = 'DRAINAGE';
-        if (sewScore > drnScore) {
-          mode = 'SEWERAGE';
-        } else if (drnScore > sewScore) {
-          mode = 'DRAINAGE';
-        } else if (hasDrainCols && hasSewerCols) {
-          mode = 'HYBRID';
-        } else if (hasSewerCols) {
-          mode = 'SEWERAGE';
-        }
-
-        setDetectedMode(mode);
-        setDetectionReason(reasons.length > 0 ? reasons.join(' • ') : `Auto-detected ${mode}`);
-        setColumnMap(mapping);
+        setColumnMap(res.mapping);
+        setDetectedMode(res.mode);
+        setDetectionConfidence(res.confidence);
+        setDetectionScores(res.scores);
+        setDetectionNotes(notes);
+        setIdInfo(res.idInfo);
+        setDetectionReason(res.reasons.length > 0 ? res.reasons.join(' • ') : `Auto-detected ${res.mode}`);
+        return res;
       };
 
       // ─────────────────────────────────────────────────────────────
       // EXCEL FILE PARSING VIA SHEETJS
       // ─────────────────────────────────────────────────────────────
-      const isEngineeringHeaderRow = (rowText) => {
-        return (
-          rowText.includes('manhole no') ||
-          rowText.includes('pipe size') ||
-          rowText.includes('drain id') ||
-          rowText.includes('drain name') ||
-          rowText.includes('diameter') ||
-          rowText.includes('u-drain') ||
-          (rowText.includes('length') && (rowText.includes('grade') || rowText.includes('gradient') || rowText.includes('invert'))) ||
-          rowText.includes('invert level')
-        );
-      };
-
       const handleFile = (file) => {
         if (!file) return;
 
@@ -582,15 +951,16 @@
             const data = new Uint8Array(e.target.result);
             const wb = XLSX.read(data, { type: 'array' });
 
+            // Pick the worksheet that really holds the engineering table
             let bestSheet = wb.SheetNames[0];
+            let bestScore = -1;
             for (const sn of wb.SheetNames) {
               if (/^(dni|copypaste|cover|instruction)/i.test(sn.trim())) continue;
-              const ws = wb.Sheets[sn];
-              const previewArr = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }).slice(0, 25);
-              const foundHeader = previewArr.some(r => isEngineeringHeaderRow(r.join(' ').toLowerCase()));
-              if (foundHeader) {
+              const previewArr = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false }).slice(0, 45);
+              const score = previewArr.reduce((mx, r) => Math.max(mx, seHeaderRowScore(r.map(seText).filter(Boolean))), 0);
+              if (score > bestScore) {
+                bestScore = score;
                 bestSheet = sn;
-                break;
               }
             }
 
@@ -603,9 +973,11 @@
 
             setActiveSheet(bestSheet);
             setActiveSecIdx(0);
-            setUserDesignMode('AUTO');
-            parseSheet(wb, bestSheet, file.name);
-            showToast(`Loaded "${file.name}" (${bestSheet})!`);
+            const res = parseSheet(wb, bestSheet, file.name);
+            const verdict = res
+              ? (res.mode === 'UNKNOWN' ? 'please choose Drainage or Sewerage' : `detected ${res.mode}`)
+              : 'no table found';
+            showToast(`Loaded "${file.name}" (${bestSheet}) - ${verdict}`);
           } catch (err) {
             console.error('Error parsing Excel file:', err);
             alert('Failed to parse Excel file. Please ensure it is a valid .xls, .xlsx, or .xlsm file.');
@@ -616,42 +988,24 @@
 
       const parseSheet = (wb, sheetName, fileNameOverride = '') => {
         const ws = wb.Sheets[sheetName];
-        if (!ws) return;
+        if (!ws) return null;
 
-        const rawArray = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-        let headerRowIndex = 0;
-        for (let i = 0; i < Math.min(rawArray.length, 35); i++) {
-          const rowText = rawArray[i].join(' ').toLowerCase();
-          if (isEngineeringHeaderRow(rowText)) {
-            headerRowIndex = i;
-            break;
-          }
-        }
-
-        const topBannerText = [
-          fileNameOverride || (fileInfo ? fileInfo.name : ''),
+        const table = seBuildTableFromSheet(ws, {
           sheetName,
-          ...rawArray.slice(0, headerRowIndex + 1).map(r => r.join(' '))
-        ].join(' ');
-
-        const jsonData = XLSX.utils.sheet_to_json(ws, {
-          defval: '',
-          raw: false,
-          range: headerRowIndex,
+          fileName: fileNameOverride || (fileInfo ? fileInfo.name : ''),
         });
 
-        if (jsonData.length === 0) {
+        if (!table || table.rows.length === 0) {
           showToast(`Warning: Sheet "${sheetName}" is empty.`);
           setRawRows([]);
           setColumns([]);
-          return;
+          return null;
         }
 
-        const headers = Object.keys(jsonData[0]);
-        setColumns(headers);
-        setRawRows(jsonData);
-        detectColumns(headers, jsonData, topBannerText);
+        setColumns(table.headers);
+        setRawRows(table.rows);
+        setUserDesignMode('AUTO');
+        return detectColumns(table.headers, table.rows, table.metaText, table.headerInfo);
       };
 
       // ─────────────────────────────────────────────────────────────
@@ -757,23 +1111,10 @@
       };
 
       const formatRow = (row) => {
-        let sewerIdRaw = String(row[columnMap.sewerId] || '').trim();
-        if (columnMap.sewerIdSub) {
-          const subVal = String(row[columnMap.sewerIdSub] || '').trim();
-          if (/^MH$/i.test(sewerIdRaw) && subVal) {
-            sewerIdRaw = `MH-${subVal.replace(/\.0+$/, '')}`;
-          } else if (!sewerIdRaw && subVal) {
-            sewerIdRaw = subVal.replace(/\.0+$/, '');
-          }
-        }
+        if (effectiveMode === 'UNKNOWN') return null; // discipline not confirmed yet - wait for the user's choice
 
-        let drainIdRaw = String(row[columnMap.drainId] || '').trim();
-        if (columnMap.drainIdSub) {
-          const subLetter = String(row[columnMap.drainIdSub] || '').trim();
-          if (/^\d+$/.test(drainIdRaw) && /^[A-Z]$/i.test(subLetter)) {
-            drainIdRaw = `${drainIdRaw}${subLetter.toUpperCase()}`;
-          }
-        }
+        const sewerIdRaw = composeId(row[columnMap.sewerId], columnMap.sewerIdSub ? row[columnMap.sewerIdSub] : '');
+        const drainIdRaw = composeId(row[columnMap.drainId], columnMap.drainIdSub ? row[columnMap.drainIdSub] : '');
 
         let glRaw = String(row[columnMap.gl] || '').trim();
         let ilRaw = String(row[columnMap.il] || '').trim();
@@ -839,18 +1180,19 @@
         let effectiveId = isSewerRow ? (sewerIdRaw || drainIdRaw) : (drainIdRaw || sewerIdRaw);
 
         if (isSewerRow) {
-          if (/^\d+(\.0+)?$/.test(effectiveId)) {
-            const cleanInt = effectiveId.replace(/\.0+$/, '');
-            effectiveId = `MH-${cleanInt.padStart(2, '0')}`;
-          } else if (/^MH\s*-?\s*\d+(\.0+)?$/i.test(effectiveId)) {
-            let num = effectiveId.replace(/\.0+$/, '').replace(/[^0-9]/g, '');
-            effectiveId = `MH-${num.padStart(2, '0')}`;
+          const mBare = effectiveId.match(/^0*(\d+)(?:\.0+)?([A-Za-z]?)$/);
+          const mPref = effectiveId.match(/^MH\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)$/i);
+          if (mBare) {
+            effectiveId = `MH-${mBare[1].padStart(2, '0')}${mBare[2].toUpperCase()}`;
+          } else if (mPref) {
+            effectiveId = `MH-${mPref[1].padStart(2, '0')}${mPref[2].toUpperCase()}`;
           }
         } else {
-          if (/^[a-zA-Z]\d+$/.test(effectiveId)) {
-            let letter = effectiveId.charAt(0);
-            let num = effectiveId.substring(1);
-            if (num.length === 1) effectiveId = `${letter}0${num}`;
+          const mDrn = effectiveId.match(/^([a-zA-Z]{1,3})\s*[-_]?\s*(\d+)$/);
+          if (mDrn) {
+            const prefix = mDrn[1].toUpperCase();
+            const num = mDrn[2].padStart(2, '0');
+            effectiveId = `${prefix}${num}`;
           }
         }
 
@@ -996,27 +1338,38 @@
         };
 
         const formatMhTag = (rawPrefix, rawSub) => {
-          const p = String(rawPrefix || '').trim().toUpperCase();
-          const sub = String(rawSub || '').trim();
-          if (p === 'MH' && sub && !isNaN(cleanNum(sub))) {
-            return `MH${Math.round(cleanNum(sub))}`;
+          const combined = composeId(rawPrefix, rawSub).trim();
+          if (!combined) return '';
+          if (/^(PE\s+FROM|TOTAL|REMARK|NOTE|MANHOLE|MH\s*NO|BRANCH)/i.test(combined)) return '';
+          const mMh = combined.match(/^MH\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)$/i);
+          if (mMh) {
+            return `MH${mMh[1]}${mMh[2].toUpperCase()}`;
           }
-          if (/^MH/i.test(p)) {
-            const rest = p.replace(/^MH\s*[-_]?\s*/i, '');
-            if (!isNaN(cleanNum(rest))) return `MH${Math.round(cleanNum(rest))}`;
-            return `MH${rest}`;
-          }
-          if (p && !isNaN(cleanNum(p))) {
-            return `MH${Math.round(cleanNum(p))}`;
+          const mNum = combined.match(/^0*(\d+)(?:\.0+)?([A-Za-z]?)$/);
+          if (mNum) {
+            return `MH${mNum[1]}${mNum[2].toUpperCase()}`;
           }
           return '';
         };
 
         rawRows.forEach((row) => {
-          const rowValuesStr = Object.values(row).join(' ').toUpperCase();
-          // If row is an explicit branch header like "PE FROM MH 1 TO MH 5", close current non-connected run if needed
-          const rawA = row[columnMap.sewerId || columnMap.drainId];
-          const rawB = columnMap.sewerIdSub ? row[columnMap.sewerIdSub] : '';
+          const idMainCol = columnMap.sewerId || columnMap.drainId;
+          const idSubCol = columnMap.sewerId ? columnMap.sewerIdSub : columnMap.drainIdSub;
+          const rawA = idMainCol ? row[idMainCol] : '';
+          const rawB = idSubCol ? row[idSubCol] : '';
+          const rawCheck = `${String(rawA || '')} ${String(rawB || '')}`.trim().toUpperCase();
+
+          // If row is an explicit branch header like "PE FROM MH 1 TO MH 5", close current non-connected run
+          if (rawCheck.startsWith('PE FROM') || rawCheck.startsWith('BRANCH')) {
+            if (curRun.length >= 2) {
+              allSections.push(curRun);
+            }
+            curRun = [];
+            pendingPipe = null;
+            cumDist = 0.0;
+            return;
+          }
+
           const mhID = formatMhTag(rawA, rawB);
 
           const lenVal = cleanNum(row[columnMap.length]);
@@ -1510,7 +1863,7 @@
                         : 'text-slate-300 hover:text-white hover:bg-cadslate-850'
                     }`}
                   >
-                    ⚡ Smart Auto ({detectedMode})
+                    ⚡ Smart Auto ({detectedMode === 'UNKNOWN' ? 'not sure' : detectedMode})
                   </button>
                   <button
                     type="button"
@@ -1772,6 +2125,143 @@
             )}
 
             {/* ─────────────────────────────────────────────────────────
+                3B. STEP 1 - DISCIPLINE DETECTION (Drainage vs Sewerage)
+            ───────────────────────────────────────────────────────── */}
+            {rawRows.length > 0 && (() => {
+              const META = {
+                DRAINAGE: { icon: '🌊', label: 'Road Drainage', badge: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40', box: 'border-cyan-500/40' },
+                SEWERAGE: { icon: '🕳️', label: 'Sewerage', badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40', box: 'border-emerald-500/40' },
+                HYBRID: { icon: '🔀', label: 'Mixed Drainage + Sewerage', badge: 'bg-violet-500/15 text-violet-300 border-violet-500/40', box: 'border-violet-500/40' },
+                UNKNOWN: { icon: '❓', label: 'Could not tell', badge: 'bg-amber-500/15 text-amber-300 border-amber-500/40', box: 'border-amber-500/50' },
+              };
+              const shown = userDesignMode === 'AUTO' ? detectedMode : userDesignMode;
+              const meta = META[shown] || META.UNKNOWN;
+              const isOverride = userDesignMode !== 'AUTO' && userDesignMode !== detectedMode;
+              const needsChoice = userDesignMode === 'AUTO' && detectedMode === 'UNKNOWN' && targetTool !== 'SEWSECTION';
+              const wrongForSection = targetTool === 'SEWSECTION' && userDesignMode === 'AUTO' && detectedMode === 'DRAINAGE';
+
+              const need = targetTool === 'SEWSECTION'
+                ? [['sewerId', 'Manhole ID'], ['gl', 'Ground Level'], ['il', 'Invert Level'], ['length', 'Length']]
+                : shown === 'SEWERAGE' ? [['sewerId', 'Manhole ID'], ['gl', 'Ground Level'], ['il', 'Invert Level']]
+                : shown === 'DRAINAGE' ? [['drainId', 'Drain ID'], ['size', 'Size'], ['length', 'Length'], ['gradient', 'Gradient']]
+                : shown === 'HYBRID' ? [['drainId', 'ID'], ['gl', 'Ground Level'], ['il', 'Invert Level'], ['size', 'Size']]
+                : [];
+              const missing = need.filter(([k]) => !columnMap[k]).map(([, label]) => label);
+              const previewIds = targetTool === 'SEWSECTION'
+                ? idInfo.samples
+                : processedRows.slice(0, 4).map(r => r.id);
+
+              return (
+                <div className={`bg-cadslate-900 border ${meta.box} rounded-xl p-4 space-y-3 shadow-lg`}>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Step 1 · File Type</span>
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full border ${meta.badge}`}>
+                        {meta.icon} {meta.label}
+                        {userDesignMode === 'AUTO' && detectedMode !== 'UNKNOWN' ? ` · ${detectionConfidence} confidence` : ''}
+                        {isOverride ? ' · chosen by you' : ''}
+                      </span>
+                    </div>
+                    {isOverride && (
+                      <button
+                        type="button"
+                        onClick={() => setUserDesignMode('AUTO')}
+                        className="text-xs text-cadcyan-400 hover:text-cadcyan-300 font-semibold self-start md:self-center"
+                      >
+                        ↺ Back to auto-detect ({detectedMode})
+                      </button>
+                    )}
+                    {!needsChoice && shown === 'SEWERAGE' && sewSections.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setTargetTool('CSVUPDATE')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                            targetTool === 'CSVUPDATE'
+                              ? 'bg-emerald-500 text-black border-emerald-400'
+                              : 'bg-cadslate-950 text-slate-300 border-cadslate-700 hover:text-white'
+                          }`}
+                        >
+                          🕳️ Plan View Labels ({processedRows.length} MHs)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTargetTool('SEWSECTION')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                            targetTool === 'SEWSECTION'
+                              ? 'bg-cadcyan-500 text-black border-cadcyan-400'
+                              : 'bg-cadslate-950 text-slate-300 border-cadslate-700 hover:text-white'
+                          }`}
+                        >
+                          📐 Long. Section ({sewSections.length} Profile{sewSections.length > 1 ? 's' : ''})
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {detectionReason}
+                    {detectionScores && (detectionScores.sew > 0 || detectionScores.drn > 0)
+                      ? ` (score: sewerage ${detectionScores.sew} · drainage ${detectionScores.drn})`
+                      : ''}
+                  </p>
+
+                  {needsChoice && (
+                    <div className="bg-amber-950/30 border border-amber-500/40 rounded-lg p-3 space-y-2">
+                      <div className="text-xs font-semibold text-amber-300">
+                        I could not tell from the headers or the IDs whether this sheet is Drainage or Sewerage. Nothing is processed until you choose:
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => setUserDesignMode('DRAINAGE')} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cadcyan-500 text-black hover:bg-cadcyan-400">🌊 It is Drainage</button>
+                        <button type="button" onClick={() => setUserDesignMode('SEWERAGE')} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 text-black hover:bg-emerald-400">🕳️ It is Sewerage</button>
+                        <button type="button" onClick={() => setUserDesignMode('HYBRID')} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cadslate-800 text-slate-200 border border-cadslate-700 hover:bg-cadslate-700">🔀 Both in one sheet</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {wrongForSection && (
+                    <div className="bg-rose-950/30 border border-rose-500/40 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="text-xs text-rose-300">
+                        This looks like a <strong>Drainage</strong> file, but Long Section (SEWSECTION) only works with sewerage manhole data.
+                      </div>
+                      <button type="button" onClick={() => setTargetTool('CSVUPDATE')} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500 text-black hover:bg-rose-400 self-start sm:self-center">
+                        Switch to CSVUPDATE
+                      </button>
+                    </div>
+                  )}
+
+                  {detectionNotes.map((n, i) => (
+                    <div key={i} className="text-xs text-cadcyan-300 bg-cadcyan-950/30 border border-cadcyan-500/30 rounded-lg px-3 py-2">ℹ {n}</div>
+                  ))}
+
+                  {idInfo.kind !== 'none' && (
+                    <div className="text-xs text-slate-300 flex flex-wrap items-center gap-1.5">
+                      <span className="text-slate-400">ID is built from:</span>
+                      <code className="px-1.5 py-0.5 rounded bg-cadslate-950 border border-cadslate-700 text-cadcyan-300">{idInfo.mainKey}</code>
+                      {idInfo.kind === 'pair' && (
+                        <>
+                          <span className="text-slate-500">+</span>
+                          <code className="px-1.5 py-0.5 rounded bg-cadslate-950 border border-cadslate-700 text-cadcyan-300">{idInfo.subKey}</code>
+                        </>
+                      )}
+                      {previewIds.length > 0 && (
+                        <>
+                          <span className="text-slate-500">→</span>
+                          <span className="font-mono text-emerald-300">{previewIds.join(', ')} …</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {missing.length > 0 && shown !== 'UNKNOWN' && (
+                    <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-500/40 rounded-lg px-3 py-2">
+                      ⚠ Could not find a column for: <strong>{missing.join(', ')}</strong>. Open <em>Customize Column Mapping</em> below and pick it manually.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            {/* ─────────────────────────────────────────────────────────
                 4. "DETECTED COLUMNS" SUMMARY BOX
             ───────────────────────────────────────────────────────── */}
             {rawRows.length > 0 && (
@@ -1959,6 +2449,28 @@
                           className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-emerald-500 font-mono"
                         >
                           <option value="">-- Auto/None --</option>
+                          {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 mb-1">Drain ID + part 2</label>
+                        <select
+                          value={columnMap.drainIdSub}
+                          onChange={(e) => setColumnMap({ ...columnMap, drainIdSub: e.target.value })}
+                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-cadcyan-500 font-mono"
+                        >
+                          <option value="">-- None (single column) --</option>
+                          {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 mb-1">Manhole ID + part 2</label>
+                        <select
+                          value={columnMap.sewerIdSub}
+                          onChange={(e) => setColumnMap({ ...columnMap, sewerIdSub: e.target.value })}
+                          className="w-full bg-cadslate-950 border border-cadslate-700 rounded p-1.5 text-white focus:border-emerald-500 font-mono"
+                        >
+                          <option value="">-- None (single column) --</option>
                           {columns.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
