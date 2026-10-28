@@ -3,14 +3,16 @@
 ;;; MODULE      : sewsection.lsp
 ;;; COMMAND     : SEWSECTION (Aliases: LONGSEC, SEWLONG)
 ;;; DESCRIPTION : Automated Sewerage Longitudinal Section Generator
-;;;               (Popup DCL Settings, 1:1000 Hor / 1:200-1:1000 Ver Scales,
-;;;                Auto 10m Datum Step, 200m Split Limit & Excel/CSV Reader)
+;;;               - IL, GL & Distance on RIGHT of Manhole Line
+;;;               - Backdrop (B/D IL) on LEFT of Manhole Line
+;;;               - Profile & Shaft Lines Trimmed at Manhole Lines
+;;;               - Strict 2-Decimal Point (0.00) Formatting
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
 ;;; ==========================================================================
 
 (vl-load-com)
 
-(defun c:sewsection ( / *error* oldCmd oldOs
+(defun c:sewsection ( / *error* oldCmd oldOs oldDimzin
                         ;; --- dialog & settings variables ---
                         hScaleIdx vScaleMode autoDatum baseDatumUnder10
                         manualDatum maxDistM splitRule layoutMode
@@ -18,33 +20,35 @@
                         ;; --- file & parsing variables ---
                         inputFile csvFile isTempCsv sections
                         ;; --- placement variables ---
-                        ptStart curPt secIdx secW gapX
+                        ptStart curPt secIdx secW gapX datumVal
                         ;; --- helper functions ---
                         ss:cleanup ss:tmpName ss:writeDCL ss:runDialog
                         ensure-layer ensure-textstyle ensure-dashed-ltype
-                        mk-line mk-text mk-mtext
+                        mk-line mk-text mk-mtext fmt-2dec
                         str-trim split-csv-line clean-num clean-mh-id
                         xlsx-to-temp-csv parse-sewer-csv
                         compute-datum draw-long-section )
 
-  (setq oldCmd (getvar "CMDECHO")
-        oldOs  (getvar "OSMODE"))
+  (setq oldCmd    (getvar "CMDECHO")
+        oldOs     (getvar "OSMODE")
+        oldDimzin (getvar "DIMZIN"))
   (setvar "CMDECHO" 0)
+  (setvar "DIMZIN" 0) ;; Prevents AutoCAD from suppressing trailing ".00" zeros
 
   ;; =========================================================================
   ;; 1. DEFAULT SETTINGS (Adjustable in Popup Dialog)
   ;; =========================================================================
   (setq hScaleIdx        "2"      ;; Index 2 = 1:1000 (0=1:200, 1=1:500, 2=1:1000, 3=1:1500, 4=1:2000)
-        vScaleMode       "200"    ;; "200" = 1:200 (Default), "500" = 1:500, "1000" = 1:1000
+        vScaleMode       "200"    ;; "200" = 1:200 (Default), "500" = 1:500, "1:1000" = 1000
         autoDatum        "1"      ;; "1" = Automatic (+10m datum step when level >= 10m)
         baseDatumUnder10 "0"      ;; Base datum when min level < 10m (e.g. 0m or 2m)
         manualDatum      "0"      ;; Used only when autoDatum = "0"
         maxDistM         "200"    ;; Max distance per section in meters (200m limit)
-        splitRule        "CROSS"  ;; "CROSS" = Finish segment reaching 200m (JRK std), "STRICT" = <= 200m
+        splitRule        "CROSS"  ;; "CROSS" = Finish segment reaching 200m, "STRICT" = <= 200m
         layoutMode       "ROW")   ;; "ROW" = Side-by-side, "COL" = Stack vertically, "PICK" = Pick each
 
   ;; =========================================================================
-  ;; 2. CLEANUP & ERROR HANDLING
+  ;; 2. CLEANUP, 2-DECIMAL FORMATTER & ERROR HANDLING
   ;; =========================================================================
   (defun ss:cleanup ()
     (if (and dclId (> dclId 0))
@@ -60,8 +64,9 @@
 
   (defun *error* (msg)
     (ss:cleanup)
-    (if oldOs  (setvar "OSMODE" oldOs))
-    (if oldCmd (setvar "CMDECHO" oldCmd))
+    (if oldDimzin (setvar "DIMZIN" oldDimzin))
+    (if oldOs     (setvar "OSMODE" oldOs))
+    (if oldCmd    (setvar "CMDECHO" oldCmd))
     (if (and msg (not (wcmatch (strcase msg) "*CANCEL*,*QUIT*,*EXIT*")))
       (princ (strcat "\n[SEWSECTION Error]: " msg))
     )
@@ -72,6 +77,30 @@
     (if (boundp 'vl-filename-mktemp)
       (vl-filename-mktemp (strcat "sewsec" ext))
       (strcat (cond ((getenv "TEMP")) ((getenv "TMP")) (".")) "\\sewsec_" (itoa (getvar "MILLISECS")) ext)
+    )
+  )
+
+  ;; Guarantees strict 2-decimal formatting (e.g. 0 -> "0.00", 6.6 -> "6.60", 55 -> "55.00")
+  (defun fmt-2dec (val / s dotPos decLen)
+    (setvar "DIMZIN" 0)
+    (setq s (rtos (if (numberp val) val 0.0) 2 2))
+    (if (= (substr s 1 1) ".")
+      (setq s (strcat "0" s))
+    )
+    (if (= (substr s 1 2) "-.")
+      (setq s (strcat "-0." (substr s 3)))
+    )
+    (setq dotPos (vl-string-search "." s))
+    (if (null dotPos)
+      (strcat s ".00")
+      (progn
+        (setq decLen (- (strlen s) dotPos 1))
+        (while (< decLen 2)
+          (setq s      (strcat s "0")
+                decLen (1+ decLen))
+        )
+        s
+      )
     )
   )
 
@@ -188,7 +217,7 @@
   )
 
   ;; =========================================================================
-  ;; 4. CAD LAYER, STYLE & ENTITY CREATION HELPERS (Exact Screenshot Specs)
+  ;; 4. CAD LAYER, STYLE & ENTITY CREATION HELPERS
   ;; =========================================================================
   (defun ensure-dashed-ltype ( / ltypeName)
     (setq ltypeName "DASHED")
@@ -255,7 +284,6 @@
     (entmake data)
   )
 
-  ;; Universal TEXT creator supporting exact justification (Bottom-Left, Middle-Left, Middle-Center)
   (defun mk-text (lay sty str pt hgt rot wid hJust vJust / data)
     (setq data (list '(0 . "TEXT")
                      '(100 . "AcDbEntity")
@@ -275,7 +303,6 @@
     (entmake data)
   )
 
-  ;; MTEXT creator for Pipe Labels ({\W0.85;225%%C VCP 1:200})
   (defun mk-mtext (lay sty str pt hgt attach / )
     (entmake (list '(0 . "MTEXT")
                    '(100 . "AcDbEntity")
@@ -343,17 +370,14 @@
     )
   )
 
-  ;; Formats Manhole IDs cleanly as "MH1", "MH2", "MH21" (matching screenshots)
   (defun clean-mh-id (rawPrefix rawSub / s numVal)
     (setq rawPrefix (strcase (str-trim rawPrefix))
           rawSub    (str-trim rawSub))
     (cond
-      ;; Split columns: Col A = "MH", Col B = "1" or "1.0"
       ((and (= rawPrefix "MH") (/= rawSub "") (clean-num rawSub))
        (setq numVal (fix (+ (clean-num rawSub) 0.0001)))
        (strcat "MH" (itoa numVal)))
 
-      ;; Single column: "MH-01", "MH 1", "MH1.0", "MH01"
       ((wcmatch rawPrefix "MH*")
        (setq s (substr rawPrefix 3)
              s (vl-string-left-trim " -_" s))
@@ -362,7 +386,6 @@
          (strcat "MH" s)
        ))
 
-      ;; Pure number in MH column: "1" or "1.0"
       ((and (/= rawPrefix "") (clean-num rawPrefix))
        (strcat "MH" (itoa (fix (+ (clean-num rawPrefix) 0.0001)))))
 
@@ -370,8 +393,7 @@
     )
   )
 
-  ;; Converts an Excel (.xlsx / .xlsm / .xls) file to a temporary CSV via ActiveX
-  (defun xlsx-to-temp-csv (xlsPath / xlApp wbs wb sheets sh i cnt tmpCsv ok)
+  (defun xlsx-to-temp-csv (xlsPath / xlApp wbs wb tmpCsv ok)
     (setq tmpCsv (ss:tmpName ".csv") ok nil)
     (setq xlApp (vl-catch-all-apply 'vlax-get-or-create-object (list "Excel.Application")))
     (if (and xlApp (not (vl-catch-all-error-p xlApp)))
@@ -384,7 +406,6 @@
             (setq wb (vl-catch-all-apply 'vlax-invoke-method (list wbs 'Open xlsPath)))
             (if (and wb (not (vl-catch-all-error-p wb)))
               (progn
-                ;; Save active sheet as CSV (xlCSV = 6)
                 (if (not (vl-catch-all-error-p
                            (vl-catch-all-apply 'vlax-invoke-method (list wb 'SaveAs tmpCsv 6))))
                   (setq ok T)
@@ -401,13 +422,11 @@
     (if (and ok (findfile tmpCsv)) tmpCsv nil)
   )
 
-  ;; Parses the Sewerage CSV into a list of Longitudinal Sections (each section = list of MH records)
-  ;; Each MH record: (list mhID cumDist gl ilIn ilOut pipeSize pipeMat pipeGrad)
   (defun parse-sewer-csv (filePath limitM splitMode / fh line cells rowStr
                           headerFound colMH colMHSub colLen colSize colGrad colMat colGL colIL colBD
                           idx hCell allSections curRun pendingPipe cumDist
                           rawA rawB mhID lenVal sizeVal gradVal matVal glVal ilVal bdVal
-                          gCell2 gCell3 lastNode newChain nextDist startNode)
+                          gCell2 gCell3 lastNode ilIn ilOut nextDist startNode)
     (setq fh (open filePath "r")
           headerFound nil
           colMH 0 colMHSub 1 colLen 10 colSize 11 colGrad 12 colMat 15 colGL 22 colIL 23 colBD 25
@@ -420,7 +439,6 @@
       (setq cells  (split-csv-line line)
             rowStr (strcase (apply 'strcat cells)))
 
-      ;; 1. Detect Header Row dynamically
       (if (and (not headerFound)
                (or (wcmatch rowStr "*MANHOLE*INVERT*")
                    (wcmatch rowStr "*LENGTH*PIPE*SIZE*")
@@ -451,7 +469,9 @@
             (setq idx (1+ idx))
           )
           (if (null colMH)   (setq colMH 0))
-          (if (= (str-trim (nth (1+ colMH) cells)) "") (setq colMHSub (1+ colMH)))
+          (if (and (< (1+ colMH) (length cells)) (= (str-trim (nth (1+ colMH) cells)) ""))
+            (setq colMHSub (1+ colMH))
+          )
           (if (null colLen)  (setq colLen 10))
           (if (null colSize) (setq colSize 11))
           (if (null colGrad) (setq colGrad 12))
@@ -460,7 +480,6 @@
           (if (null colIL)   (setq colIL 23))
           (if (null colBD)   (setq colBD 25))
         )
-        ;; 2. Parse Data Rows
         (if (> (length cells) (max colMH colGL colIL))
           (progn
             (setq rawA (if (< colMH (length cells)) (nth colMH cells) "")
@@ -476,7 +495,6 @@
 
             (if (or (= matVal "") (= matVal "-")) (setq matVal "VCP"))
 
-            ;; Parse Gradient (Supports "1:200", "200", or 3-column "1" | ":" | "200")
             (setq gradVal nil)
             (if (and colGrad (< colGrad (length cells)))
               (progn
@@ -495,13 +513,11 @@
             )
             (if (or (null gradVal) (= gradVal "")) (setq gradVal "200"))
 
-            ;; Process valid Manhole Row (must have MH ID, GL, and IL)
             (if (and (/= mhID "") glVal ilVal)
               (cond
-                ;; CASE 1: Same Manhole ID as the last node in curRun -> Attach Outgoing Pipe / Backdrop!
+                ;; Same Manhole ID as last node -> attach outgoing pipe or backdrop
                 ((and curRun (= mhID (nth 0 (last curRun))))
                  (setq lastNode (last curRun))
-                 ;; Check if this outgoing row has a lower IL than the arrival IL (Backdrop!)
                  (setq ilIn  (nth 3 lastNode)
                        ilOut (if (< ilVal (- ilIn 0.005)) ilVal (nth 4 lastNode)))
                  (if (and bdVal (> bdVal 0.005) (equal ilIn ilOut 0.005))
@@ -521,11 +537,10 @@
                  )
                 )
 
-                ;; CASE 2: New Manhole ID at the downstream end of pendingPipe
+                ;; Next Manhole connected by pendingPipe
                 ((and curRun pendingPipe)
                  (setq nextDist (+ cumDist (nth 0 pendingPipe)))
 
-                 ;; If STRICT <= 200m mode and nextDist > limitM (and curRun has >= 2 nodes), split BEFORE this segment
                  (if (and (= splitMode "STRICT") (> nextDist limitM) (>= (length curRun) 2))
                    (progn
                      (setq allSections (append allSections (list curRun))
@@ -551,8 +566,7 @@
                    (setq pendingPipe nil)
                  )
 
-                 ;; If CROSS >= 200m mode and cumDist >= limitM, finish this section here and start next at 0.00m
-                 (if (and (= splitMode "CROSS") (>= cumDist limitM))
+                 (if (and (= splitMode "CROSS") (>= cumDist limitM) pendingPipe)
                    (progn
                      (setq allSections (append allSections (list curRun))
                            lastNode    (last curRun)
@@ -564,7 +578,7 @@
                  )
                 )
 
-                ;; CASE 3: Start of a Brand-New Sewer Branch (no pendingPipe from previous node)
+                ;; New Sewer Branch
                 (T
                  (if (>= (length curRun) 2)
                    (setq allSections (append allSections (list curRun)))
@@ -606,17 +620,14 @@
           (if (< ilOut minIL) (setq minIL ilOut))
         )
         (if (>= minIL 10.0)
-          ;; Automatic 10m Datum step (e.g. 10m-19.99m -> 10m, 20m-29.99m -> 20m)
           (progn
             (setq tenStep (* 10.0 (fix (/ minIL 10.0)))
                   dVal    (+ tenStep (if (distof baseU10) (distof baseU10) 0.0)))
-            ;; Ensure minimum IL never drops below Datum + 1.0m
             (if (> dVal (- minIL 1.0))
               (setq dVal (max 0.0 (fix (- minIL 2.0))))
             )
             dVal
           )
-          ;; Below 10m: use baseDatumUnder10 (e.g. 0m or 2m), clamped below minIL
           (progn
             (setq dVal (if (distof baseU10) (distof baseU10) 0.0))
             (if (> dVal (- minIL 1.0))
@@ -630,29 +641,39 @@
   )
 
   ;; =========================================================================
-  ;; 7. LONGITUDINAL SECTION GEOMETRY ENGINE (Matches Template Screenshots)
+  ;; 7. LONGITUDINAL SECTION GEOMETRY ENGINE
+  ;;    - IL, GL & Distance placed on RIGHT of Manhole Line (+1050.0)
+  ;;    - Backdrop (B/D IL) placed on LEFT of Manhole Line (-1050.0 & -2150.0)
+  ;;    - Profile & Shaft Lines trimmed cleanly at Manhole Shaft Walls (+/-375.0)
+  ;;    - Strict 2-Decimal Point (0.00) formatting on all values
   ;; =========================================================================
   (defun draw-long-section (ptBase secNodes hScale vScale datumVal /
-                            x0 y0 hdrW hMult vMult totalDist xStart xEnd
+                            x0 y0 hdrW shaftHalfW hMult vMult totalDist xStart xEnd
                             yLine1 yLine2 yLine3 yRow1 yRow2 yRow3
-                            maxGL n node yTop idx mhID dM gl ilIn ilOut xMh
-                            yIlIn yIlOut yGl xTxt titleMHs
-                            nextNode dNext xNext yIlNextIn yGlNext segLenM xMid pipeStr)
+                            maxGL n node yTop idx lastIdx mhID dM gl ilIn ilOut xMh
+                            yIlIn yIlOut yGl xTxtRight titleMHs
+                            prevNode dPrev xPrev yGlPrev yIlPrevOut spanPrev
+                            yGlLeftWall yIlLeftWall
+                            nextNode dNext xNext yIlNextIn yGlNext segLenM spanNext
+                            yGlRightWall yIlRightWall yGlNextLeftWall yIlNextLeftWall
+                            xPipe1 xPipe2 xMid pipeStr)
 
-    (setq x0        (car ptBase)
-          y0        (cadr ptBase)
-          hdrW      37500.0
-          hMult     (/ 1000000.0 hScale)   ;; 1:1000 -> 1000 CAD units/m
-          vMult     (/ 1000000.0 vScale)   ;; 1:200  -> 5000 CAD units/m
-          totalDist (nth 1 (last secNodes))
-          xStart    (+ x0 hdrW)
-          xEnd      (+ xStart (* totalDist hMult))
-          yLine1    (- y0 5000.0)
-          yLine2    (- y0 10000.0)
-          yLine3    (- y0 15000.0)
-          yRow1     (- y0 2500.0)
-          yRow2     (- y0 7500.0)
-          yRow3     (- y0 12500.0))
+    (setq x0         (car ptBase)
+          y0         (cadr ptBase)
+          hdrW       37500.0
+          shaftHalfW 375.0                 ;; Half-width of Manhole Shaft (375 CAD units each side)
+          hMult      (/ 1000000.0 hScale)  ;; 1:1000 -> 1000 CAD units/m
+          vMult      (/ 1000000.0 vScale)  ;; 1:200  -> 5000 CAD units/m
+          totalDist  (nth 1 (last secNodes))
+          xStart     (+ x0 hdrW)
+          xEnd       (+ xStart (* totalDist hMult))
+          yLine1     (- y0 5000.0)
+          yLine2     (- y0 10000.0)
+          yLine3     (- y0 15000.0)
+          yRow1      (- y0 2500.0)
+          yRow2      (- y0 7500.0)
+          yRow3      (- y0 12500.0)
+          lastIdx    (1- (length secNodes)))
 
     ;; Compute uniform top elevation for vertical manhole lines
     (setq maxGL -1.0e9)
@@ -662,7 +683,7 @@
     (setq yTop (max (+ y0 49500.0)
                     (+ y0 (* (- maxGL datumVal) vMult) 15000.0)))
 
-    ;; 1. Draw Horizontal Table Lines (Layer "TITLE")
+    ;; 1. Draw Horizontal Table Lines trimmed exactly at the Last Manhole Line (xEnd)
     (mk-line "TITLE" (list x0 y0)     (list xEnd y0)     nil)
     (mk-line "TITLE" (list x0 yLine1) (list xEnd yLine1) nil)
     (mk-line "TITLE" (list x0 yLine2) (list xEnd yLine2) nil)
@@ -670,7 +691,7 @@
 
     ;; 2. Draw Left Header Labels (Layer "TITLE", Style "T3", Height 1300, Width 0.85)
     (mk-text "TITLE" "T3"
-             (strcat "DATUM " (rtos datumVal 2 (if (equal datumVal (fix datumVal) 0.01) 0 1)) "m")
+             (strcat "DATUM " (rtos datumVal 2 (if (equal datumVal (fix datumVal) 0.01) 0 2)) "m")
              (list x0 (+ y0 1350.0)) 1300.0 0.0 0.85 0 2)
 
     (mk-text "TITLE" "T3" "MANHOLES INVERT LEVEL" (list x0 (- y0 1468.0)) 1300.0 0.0 0.85 0 2)
@@ -685,69 +706,115 @@
     (mk-line "M" (list (+ x0 24000.0) yRow1) (list (+ x0 35000.0) yRow1) nil)
     (mk-line "P" (list (+ x0 24000.0) yRow2) (list (+ x0 35000.0) yRow2) 2500.0)
 
-    ;; 4. Loop Through Manholes: Vertical Lines, Shafts, Table Values & Profile Lines
+    ;; 4. Loop Through Manholes: Vertical Lines, Trimmed Shafts, Table Values & Trimmed Profile Lines
     (setq idx 0 titleMHs "")
-    (while (< idx (length secNodes))
-      (setq node  (nth idx secNodes)
-            mhID  (nth 0 node)
-            dM    (nth 1 node)
-            gl    (nth 2 node)
-            ilIn  (nth 3 node)
-            ilOut (nth 4 node)
-            xMh   (+ xStart (* dM hMult))
-            yIlIn (+ y0 (* (- ilIn  datumVal) vMult))
-            yIlOut(+ y0 (* (- ilOut datumVal) vMult))
-            yGl   (+ y0 (* (- gl    datumVal) vMult)))
+    (while (<= idx lastIdx)
+      (setq node   (nth idx secNodes)
+            mhID   (nth 0 node)
+            dM     (nth 1 node)
+            gl     (nth 2 node)
+            ilIn   (nth 3 node)
+            ilOut  (nth 4 node)
+            xMh    (+ xStart (* dM hMult))
+            yIlIn  (+ y0 (* (- ilIn  datumVal) vMult))
+            yIlOut (+ y0 (* (- ilOut datumVal) vMult))
+            yGl    (+ y0 (* (- gl    datumVal) vMult)))
 
       (setq titleMHs (if (= titleMHs "") mhID (strcat titleMHs ", " mhID)))
 
-      ;; 4A. Full Vertical Line from bottom of table (yLine3) to top (yTop)
+      ;; 4A. Central Vertical Manhole Line trimmed from bottom table line (yLine3) to top (yTop)
       (mk-line "TITLE" (list xMh yLine3) (list xMh yTop) nil)
 
-      ;; 4B. Manhole Shaft Side Lines between Invert Level (yIlOut) and Road Level (yGl)
-      (if (> yGl yIlOut)
+      ;; 4B. Compute exact Y intersections at Left Shaft Wall (xMh - 375) and Right Shaft Wall (xMh + 375)
+      ;;     so the shaft side lines and profile lines trim cleanly against each other
+      (if (> idx 0)
         (progn
-          (mk-line "TITLE" (list (- xMh 375.0) yIlOut) (list (- xMh 375.0) yGl) nil)
-          (mk-line "TITLE" (list (+ xMh 375.0) yIlOut) (list (+ xMh 375.0) yGl) nil)
+          (setq prevNode   (nth (1- idx) secNodes)
+                dPrev      (nth 1 prevNode)
+                xPrev      (+ xStart (* dPrev hMult))
+                yGlPrev    (+ y0 (* (- (nth 2 prevNode) datumVal) vMult))
+                yIlPrevOut (+ y0 (* (- (nth 4 prevNode) datumVal) vMult))
+                spanPrev   (- xMh xPrev))
+          (if (> spanPrev (* 2.0 shaftHalfW))
+            (setq yGlLeftWall (+ yGl (* (/ (- yGlPrev yGl) spanPrev) shaftHalfW))
+                  yIlLeftWall (min yIlOut (+ yIlIn (* (/ (- yIlPrevOut yIlIn) spanPrev) shaftHalfW))))
+            (setq yGlLeftWall yGl
+                  yIlLeftWall yIlOut)
+          )
         )
+        (setq yGlLeftWall yGl
+              yIlLeftWall yIlOut)
+      )
+
+      (if (< idx lastIdx)
+        (progn
+          (setq nextNode  (nth (1+ idx) secNodes)
+                dNext     (nth 1 nextNode)
+                xNext     (+ xStart (* dNext hMult))
+                yGlNext   (+ y0 (* (- (nth 2 nextNode) datumVal) vMult))
+                yIlNextIn (+ y0 (* (- (nth 3 nextNode) datumVal) vMult))
+                spanNext  (- xNext xMh))
+          (if (> spanNext (* 2.0 shaftHalfW))
+            (setq yGlRightWall (+ yGl   (* (/ (- yGlNext   yGl)   spanNext) shaftHalfW))
+                  yIlRightWall (+ yIlOut(* (/ (- yIlNextIn yIlOut)spanNext) shaftHalfW)))
+            (setq yGlRightWall yGl
+                  yIlRightWall yIlOut)
+          )
+        )
+        (setq yGlRightWall yGl
+              yIlRightWall yIlOut)
+      )
+
+      ;; Draw Trimmed Manhole Shaft Side Lines (Left Wall & Right Wall)
+      (if (> yGlLeftWall yIlLeftWall)
+        (mk-line "TITLE" (list (- xMh shaftHalfW) yIlLeftWall) (list (- xMh shaftHalfW) yGlLeftWall) nil)
+      )
+      (if (> yGlRightWall yIlRightWall)
+        (mk-line "TITLE" (list (+ xMh shaftHalfW) yIlRightWall) (list (+ xMh shaftHalfW) yGlRightWall) nil)
       )
 
       ;; 4C. Top Manhole ID Label (Layer "M", Style "T3", Height 1300, Rot 90, Width 0.85, Bottom-Left)
       (mk-text "M" "T3" mhID (list (- xMh 250.0) (- yTop 3700.0)) 1300.0 (/ pi 2.0) 0.85 0 1)
 
-      ;; 4D. Table Values (Layer "DT", Style "2", Height 900, Rot 90, Width 0.85, Middle-Center)
-      ;; First manhole is offset right (+1050); subsequent manholes are offset left (-1050)
-      (setq xTxt (if (= idx 0) (+ xMh 1050.0) (- xMh 1050.0)))
+      ;; 4D. Table Values: IL, GL, and Distance (Length) ALWAYS on RIGHT of Manhole Line (+1050.0)
+      ;;     Formatted strictly to 2 decimal places (0.00)
+      (setq xTxtRight (+ xMh 1050.0))
+      (mk-text "DT" "2" (fmt-2dec ilOut) (list xTxtRight yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
+      (mk-text "DT" "2" (fmt-2dec gl)    (list xTxtRight yRow2) 900.0 (/ pi 2.0) 0.85 1 2)
+      (mk-text "DT" "2" (fmt-2dec dM)    (list xTxtRight yRow3) 900.0 (/ pi 2.0) 0.85 1 2)
 
-      (mk-text "DT" "2" (rtos ilOut 2 2) (list xTxt yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
-      (mk-text "DT" "2" (rtos gl    2 2) (list xTxt yRow2) 900.0 (/ pi 2.0) 0.85 1 2)
-      (mk-text "DT" "2" (rtos dM    2 2) (list xTxt yRow3) 900.0 (/ pi 2.0) 0.85 1 2)
-
-      ;; If Backdrop exists at this manhole (ilIn > ilOut + 0.01), draw B/D IL labels & vertical drop
+      ;; 4E. Backdrop Info stays on LEFT of Manhole Line (-1050.0 and -2150.0) + vertical drop line
       (if (and (> idx 0) (> (- ilIn ilOut) 0.01))
         (progn
-          (mk-text "DT" "2" (rtos ilIn 2 2) (list (- xMh 2150.0) yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
-          (mk-text "DT" "2" "B/D IL"        (list (- xMh 3250.0) yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
-          (mk-line "M" (list xMh yIlIn) (list xMh yIlOut) nil)
+          (mk-text "DT" "2" (fmt-2dec ilIn) (list (- xMh 1050.0) yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
+          (mk-text "DT" "2" "B/D IL"        (list (- xMh 2150.0) yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
+          ;; Vertical backdrop drop line trimmed at the left shaft wall
+          (mk-line "M" (list (- xMh shaftHalfW) yIlLeftWall) (list (- xMh shaftHalfW) yIlOut) nil)
         )
       )
 
-      ;; 4E. Connect Profile Lines & Pipe MTEXT to Next Manhole
-      (if (< idx (1- (length secNodes)))
+      ;; 4F. Connect Profile Lines (Trimmed at Manhole Shaft Walls) & Pipe MTEXT to Next Manhole
+      (if (< idx lastIdx)
         (progn
-          (setq nextNode  (nth (1+ idx) secNodes)
-                dNext     (nth 1 nextNode)
-                xNext     (+ xStart (* dNext hMult))
-                yIlNextIn (+ y0 (* (- (nth 3 nextNode) datumVal) vMult))
-                yGlNext   (+ y0 (* (- (nth 2 nextNode) datumVal) vMult))
-                segLenM   (- dNext dM)
-                xMid      (/ (+ xMh xNext) 2.0))
+          (setq segLenM (- dNext dM)
+                xMid    (/ (+ xMh xNext) 2.0))
 
-          ;; Magenta Sewer Invert Profile Line
-          (mk-line "M" (list xMh yIlOut) (list xNext yIlNextIn) nil)
+          (if (> spanNext (* 2.0 shaftHalfW))
+            (setq xPipe1          (+ xMh shaftHalfW)
+                  xPipe2          (- xNext shaftHalfW)
+                  yGlNextLeftWall (- yGlNext   (* (/ (- yGlNext   yGl)   spanNext) shaftHalfW))
+                  yIlNextLeftWall (- yIlNextIn (* (/ (- yIlNextIn yIlOut)spanNext) shaftHalfW)))
+            (setq xPipe1          xMh
+                  xPipe2          xNext
+                  yGlNextLeftWall yGlNext
+                  yIlNextLeftWall yIlNextIn)
+          )
 
-          ;; Yellow Dashed Proposed Road Profile Line (Linetype scale 2500.0)
-          (mk-line "P" (list xMh yGl) (list xNext yGlNext) 2500.0)
+          ;; Magenta Sewer Invert Profile Line (Trimmed between xMh+375 and xNext-375)
+          (mk-line "M" (list xPipe1 yIlRightWall) (list xPipe2 yIlNextLeftWall) nil)
+
+          ;; Yellow Dashed Proposed Road Profile Line (Trimmed between xMh+375 and xNext-375)
+          (mk-line "P" (list xPipe1 yGlRightWall) (list xPipe2 yGlNextLeftWall) 2500.0)
 
           ;; Pipe Specification MTEXT in Row 1 (2-line for narrow segments < 18m, 1-line otherwise)
           (if (< (* segLenM (/ 1000.0 hScale)) 18.0)
@@ -788,7 +855,6 @@
   ;; =========================================================================
   (princ "\nCommand: SEWSECTION (Automated Sewerage Longitudinal Section Generator)")
 
-  ;; Step 1: Show Interactive Popup Dialog
   (if (boundp 'load_dialog)
     (setq dlgOK (ss:runDialog))
     (setq dlgOK 1)
@@ -800,7 +866,6 @@
       (setq hScaleVal (nth (atoi hScaleIdx) '(200.0 500.0 1000.0 1500.0 2000.0))
             vScaleVal (distof vScaleMode))
 
-      ;; Step 2: Select Sewerage Calculation Spreadsheet (.CSV or .XLSX / .XLSM)
       (setq inputFile (getfiled "Select Sewerage Calculation CSV or Excel Spreadsheet" "" "csv;xlsx;xlsm;xls" 0))
       (if (not inputFile)
         (princ "\n>> No file selected. SEWSECTION cancelled.")
@@ -820,14 +885,12 @@
             )
           )
 
-          ;; Step 3: Parse Sections & Apply 200m Distance Limit
           (setq sections (parse-sewer-csv csvFile (distof maxDistM) splitRule))
           (ss:cleanup)
 
           (if (null sections)
             (alert "No valid Sewerage Manhole & Pipe runs were found in the selected file.\n\nEnsure the sheet contains Manhole No., Length, Pipe Size, Gradient, Ground Level, and Invert Level columns.")
             (progn
-              ;; Step 4: Ensure Layers & Text Styles match exact screenshot properties
               (ensure-layer "TITLE" 7 "Continuous")
               (ensure-layer "M"     6 "Continuous")
               (ensure-layer "P"     2 (ensure-dashed-ltype))
@@ -839,7 +902,6 @@
               (princ (strcat "\n>> Parsed " (itoa (length sections))
                              " Longitudinal Section(s) from file (Limit: " maxDistM "m)."))
 
-              ;; Step 5: Pick Insertion Point & Draw All Sections
               (setvar "OSMODE" oldOs)
               (if (/= layoutMode "PICK")
                 (setq ptStart (getpoint "\nClick Insertion Point for First Longitudinal Section: "))
@@ -893,8 +955,9 @@
     )
   )
 
-  (if oldOs  (setvar "OSMODE" oldOs))
-  (if oldCmd (setvar "CMDECHO" oldCmd))
+  (if oldDimzin (setvar "DIMZIN" oldDimzin))
+  (if oldOs     (setvar "OSMODE" oldOs))
+  (if oldCmd    (setvar "CMDECHO" oldCmd))
   (princ)
 )
 
