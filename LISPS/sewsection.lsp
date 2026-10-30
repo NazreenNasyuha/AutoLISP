@@ -3,7 +3,8 @@
 ;;; MODULE      : sewsection.lsp
 ;;; COMMAND     : SEWSECTION (Aliases: LONGSEC, SEWLONG)
 ;;; DESCRIPTION : Automated Sewerage Longitudinal Section Generator
-;;;               - IL, GL & Distance on RIGHT of Manhole Line
+;;;               - Pre-Ticked Toggles for IL, GL, Depth & Distance/Length
+;;;               - IL, GL, Depth & Distance on RIGHT of Manhole Line
 ;;;               - Backdrop (B/D IL) on LEFT of Manhole Line
 ;;;               - Profile & Shaft Lines Trimmed at Manhole Lines
 ;;;               - Strict 2-Decimal Point (0.00) Formatting
@@ -16,6 +17,7 @@
                         ;; --- dialog & settings variables ---
                         hScaleIdx vScaleMode autoDatum baseDatumUnder10
                         manualDatum maxDistM splitRule layoutMode
+                        showIL showGL showDepth showLen
                         hScaleVal vScaleVal dclFile dclId dlgOK
                         ;; --- file & parsing variables ---
                         inputFile csvFile isTempCsv sections
@@ -39,13 +41,18 @@
   ;; 1. DEFAULT SETTINGS (Adjustable in Popup Dialog)
   ;; =========================================================================
   (setq hScaleIdx        "2"      ;; Index 2 = 1:1000 (0=1:200, 1=1:500, 2=1:1000, 3=1:1500, 4=1:2000)
-        vScaleMode       "200"    ;; "200" = 1:200 (Default), "500" = 1:500, "1:1000" = 1000
+        vScaleMode       "200"    ;; "200" = 1:200 (Default), "500" = 1:500, "1000" = 1000
         autoDatum        "1"      ;; "1" = Automatic (+10m datum step when level >= 10m)
         baseDatumUnder10 "0"      ;; Base datum when min level < 10m (e.g. 0m or 2m)
         manualDatum      "0"      ;; Used only when autoDatum = "0"
         maxDistM         "200"    ;; Max distance per section in meters (200m limit)
         splitRule        "CROSS"  ;; "CROSS" = Finish segment reaching 200m, "STRICT" = <= 200m
-        layoutMode       "ROW")   ;; "ROW" = Side-by-side, "COL" = Stack vertically, "PICK" = Pick each
+        layoutMode       "ROW"    ;; "ROW" = Side-by-side, "COL" = Stack vertically, "PICK" = Pick each
+        ;; All 4 table rows ticked ("1") by default:
+        showIL           "1"      ;; Tick: Invert Level (IL)
+        showGL           "1"      ;; Tick: Ground / Proposed Road Level (GL)
+        showDepth        "1"      ;; Tick: Manhole Depth
+        showLen          "1")     ;; Tick: Distance / Length
 
   ;; =========================================================================
   ;; 2. CLEANUP, 2-DECIMAL FORMATTER & ERROR HANDLING
@@ -140,8 +147,21 @@
         (write-line "      }" fh)
         (write-line "    }" fh)
         (write-line "  }" fh)
+        (write-line "  : boxed_column {" fh)
+        (write-line "    label = \"3. Table Data Rows to Include (All Ticked by Default)\";" fh)
+        (write-line "    : row {" fh)
+        (write-line "      : column {" fh)
+        (write-line "        : toggle { key = \"chk_il\";    label = \"Invert Level (IL) & Pipe Spec\"; }" fh)
+        (write-line "        : toggle { key = \"chk_gl\";    label = \"Ground / Road Level (GL)\"; }" fh)
+        (write-line "      }" fh)
+        (write-line "      : column {" fh)
+        (write-line "        : toggle { key = \"chk_depth\"; label = \"Manhole Depth (m)\"; }" fh)
+        (write-line "        : toggle { key = \"chk_len\";   label = \"Distance / Length (m)\"; }" fh)
+        (write-line "      }" fh)
+        (write-line "    }" fh)
+        (write-line "  }" fh)
         (write-line "  : boxed_radio_column {" fh)
-        (write-line "    label = \"3. Multi-Section Placement Arrangement\";" fh)
+        (write-line "    label = \"4. Multi-Section Placement Arrangement\";" fh)
         (write-line "    : radio_button { key = \"lay_row\";  label = \"Place Side-by-Side Horizontally (Left to Right)\"; }" fh)
         (write-line "    : radio_button { key = \"lay_col\";  label = \"Stack Vertically (Top to Bottom)\"; }" fh)
         (write-line "    : radio_button { key = \"lay_pick\"; label = \"Click Insertion Point Manually for Each Section\"; }" fh)
@@ -185,6 +205,12 @@
             (set_tile "sp_cross"  (if (= splitRule "CROSS")  "1" "0"))
             (set_tile "sp_strict" (if (= splitRule "STRICT") "1" "0"))
 
+            ;; Pre-tick all 4 table row options
+            (set_tile "chk_il"    showIL)
+            (set_tile "chk_gl"    showGL)
+            (set_tile "chk_depth" showDepth)
+            (set_tile "chk_len"   showLen)
+
             (set_tile "lay_row"  (if (= layoutMode "ROW")  "1" "0"))
             (set_tile "lay_col"  (if (= layoutMode "COL")  "1" "0"))
             (set_tile "lay_pick" (if (= layoutMode "PICK") "1" "0"))
@@ -201,10 +227,17 @@
                 "manualDatum (get_tile \"mandatum\") "
                 "maxDistM (get_tile \"maxdist\") "
                 "splitRule (if (= (get_tile \"sp_strict\") \"1\") \"STRICT\" \"CROSS\") "
+                "showIL (get_tile \"chk_il\") "
+                "showGL (get_tile \"chk_gl\") "
+                "showDepth (get_tile \"chk_depth\") "
+                "showLen (get_tile \"chk_len\") "
                 "layoutMode (cond ((= (get_tile \"lay_col\") \"1\") \"COL\") ((= (get_tile \"lay_pick\") \"1\") \"PICK\") (T \"ROW\"))) "
-                "(if (or (null (distof maxDistM)) (<= (distof maxDistM) 0.0)) "
-                "(set_tile \"error\" \"Please enter a valid positive Max Distance Limit (e.g. 200).\") "
-                "(done_dialog 1))"))
+                "(cond "
+                "((or (null (distof maxDistM)) (<= (distof maxDistM) 0.0)) "
+                " (set_tile \"error\" \"Please enter a valid positive Max Distance Limit (e.g. 200).\")) "
+                "((and (= showIL \"0\") (= showGL \"0\") (= showDepth \"0\") (= showLen \"0\")) "
+                " (set_tile \"error\" \"Please tick at least one Table Data Row to include.\")) "
+                "(T (done_dialog 1)))"))
 
             (action_tile "cancel" "(done_dialog 0)")
             (setq res (start_dialog))
@@ -422,14 +455,15 @@
     (if (and ok (findfile tmpCsv)) tmpCsv nil)
   )
 
+  ;; Each MH node: (list mhID cumDist gl ilIn ilOut pipeSize pipeMat pipeGrad depthVal)
   (defun parse-sewer-csv (filePath limitM splitMode / fh line cells rowStr
-                          headerFound colMH colMHSub colLen colSize colGrad colMat colGL colIL colBD
+                          headerFound colMH colMHSub colLen colSize colGrad colMat colGL colIL colDepth colBD
                           idx hCell allSections curRun pendingPipe cumDist
-                          rawA rawB mhID lenVal sizeVal gradVal matVal glVal ilVal bdVal
-                          gCell2 gCell3 lastNode ilIn ilOut nextDist startNode)
+                          rawA rawB mhID lenVal sizeVal gradVal matVal glVal ilVal depthVal bdVal
+                          gCell2 gCell3 lastNode ilIn ilOut calcDepth nextDist startNode)
     (setq fh (open filePath "r")
           headerFound nil
-          colMH 0 colMHSub 1 colLen 10 colSize 11 colGrad 12 colMat 15 colGL 22 colIL 23 colBD 25
+          colMH 0 colMHSub 1 colLen 10 colSize 11 colGrad 12 colMat 15 colGL 22 colIL 23 colDepth 24 colBD 25
           allSections nil
           curRun nil
           pendingPipe nil
@@ -445,7 +479,7 @@
                    (wcmatch rowStr "*GROUND*LEVEL*INVERT*")))
         (progn
           (setq headerFound T idx 0
-                colMH nil colMHSub nil colLen nil colSize nil colGrad nil colMat nil colGL nil colIL nil colBD nil)
+                colMH nil colMHSub nil colLen nil colSize nil colGrad nil colMat nil colGL nil colIL nil colDepth nil colBD nil)
           (foreach cell cells
             (setq hCell (strcase (str-trim cell)))
             (cond
@@ -463,22 +497,25 @@
                (setq colGL idx))
               ((and (null colIL) (wcmatch hCell "*INVERT*LEVEL*,IL*"))
                (setq colIL idx))
+              ((and (null colDepth) (wcmatch hCell "*DEPTH*"))
+               (setq colDepth idx))
               ((and (null colBD) (wcmatch hCell "*BACKDROP*,B/D*"))
                (setq colBD idx))
             )
             (setq idx (1+ idx))
           )
-          (if (null colMH)   (setq colMH 0))
+          (if (null colMH)    (setq colMH 0))
           (if (and (< (1+ colMH) (length cells)) (= (str-trim (nth (1+ colMH) cells)) ""))
             (setq colMHSub (1+ colMH))
           )
-          (if (null colLen)  (setq colLen 10))
-          (if (null colSize) (setq colSize 11))
-          (if (null colGrad) (setq colGrad 12))
-          (if (null colMat)  (setq colMat 15))
-          (if (null colGL)   (setq colGL 22))
-          (if (null colIL)   (setq colIL 23))
-          (if (null colBD)   (setq colBD 25))
+          (if (null colLen)   (setq colLen 10))
+          (if (null colSize)  (setq colSize 11))
+          (if (null colGrad)  (setq colGrad 12))
+          (if (null colMat)   (setq colMat 15))
+          (if (null colGL)    (setq colGL 22))
+          (if (null colIL)    (setq colIL 23))
+          (if (null colDepth) (setq colDepth 24))
+          (if (null colBD)    (setq colBD 25))
         )
         (if (> (length cells) (max colMH colGL colIL))
           (progn
@@ -486,12 +523,13 @@
                   rawB (if (and colMHSub (< colMHSub (length cells))) (nth colMHSub cells) "")
                   mhID (clean-mh-id rawA rawB))
 
-            (setq lenVal  (if (and colLen  (< colLen  (length cells))) (clean-num (nth colLen  cells)) nil)
-                  sizeVal (if (and colSize (< colSize (length cells))) (clean-num (nth colSize cells)) nil)
-                  glVal   (if (and colGL   (< colGL   (length cells))) (clean-num (nth colGL   cells)) nil)
-                  ilVal   (if (and colIL   (< colIL   (length cells))) (clean-num (nth colIL   cells)) nil)
-                  bdVal   (if (and colBD   (< colBD   (length cells))) (clean-num (nth colBD   cells)) nil)
-                  matVal  (if (and colMat  (< colMat  (length cells))) (str-trim  (nth colMat  cells)) ""))
+            (setq lenVal   (if (and colLen   (< colLen   (length cells))) (clean-num (nth colLen   cells)) nil)
+                  sizeVal  (if (and colSize  (< colSize  (length cells))) (clean-num (nth colSize  cells)) nil)
+                  glVal    (if (and colGL    (< colGL    (length cells))) (clean-num (nth colGL    cells)) nil)
+                  ilVal    (if (and colIL    (< colIL    (length cells))) (clean-num (nth colIL    cells)) nil)
+                  depthVal (if (and colDepth (< colDepth (length cells))) (clean-num (nth colDepth cells)) nil)
+                  bdVal    (if (and colBD    (< colBD    (length cells))) (clean-num (nth colBD    cells)) nil)
+                  matVal   (if (and colMat   (< colMat   (length cells))) (str-trim  (nth colMat   cells)) ""))
 
             (if (or (= matVal "") (= matVal "-")) (setq matVal "VCP"))
 
@@ -523,6 +561,7 @@
                  (if (and bdVal (> bdVal 0.005) (equal ilIn ilOut 0.005))
                    (setq ilIn (+ ilOut bdVal))
                  )
+                 (setq calcDepth (if depthVal depthVal (- (if glVal glVal (nth 2 lastNode)) ilOut)))
                  (setq lastNode (list (nth 0 lastNode)
                                       (nth 1 lastNode)
                                       (if glVal glVal (nth 2 lastNode))
@@ -530,7 +569,8 @@
                                       ilOut
                                       (if sizeVal (itoa (fix (+ sizeVal 0.5))) (nth 5 lastNode))
                                       matVal
-                                      gradVal))
+                                      gradVal
+                                      calcDepth))
                  (setq curRun (append (reverse (cdr (reverse curRun))) (list lastNode)))
                  (if (and lenVal (> lenVal 0.0))
                    (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal))
@@ -546,20 +586,21 @@
                      (setq allSections (append allSections (list curRun))
                            lastNode    (last curRun)
                            startNode   (list (nth 0 lastNode) 0.0 (nth 2 lastNode) (nth 4 lastNode) (nth 4 lastNode)
-                                             (nth 5 lastNode) (nth 6 lastNode) (nth 7 lastNode))
+                                             (nth 5 lastNode) (nth 6 lastNode) (nth 7 lastNode) (nth 8 lastNode))
                            curRun      (list startNode)
                            cumDist     (nth 0 pendingPipe))
                    )
                    (setq cumDist nextDist)
                  )
 
-                 (setq ilIn  (if (and bdVal (> bdVal 0.005)) (+ ilVal bdVal) ilVal)
-                       ilOut ilVal)
+                 (setq ilIn      (if (and bdVal (> bdVal 0.005)) (+ ilVal bdVal) ilVal)
+                       ilOut     ilVal
+                       calcDepth (if depthVal depthVal (- glVal ilOut)))
 
                  (setq curRun (append curRun
                                       (list (list mhID cumDist glVal ilIn ilOut
                                                   (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225")
-                                                  matVal gradVal))))
+                                                  matVal gradVal calcDepth))))
 
                  (if (and lenVal (> lenVal 0.0))
                    (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal))
@@ -571,7 +612,7 @@
                      (setq allSections (append allSections (list curRun))
                            lastNode    (last curRun)
                            startNode   (list (nth 0 lastNode) 0.0 (nth 2 lastNode) (nth 4 lastNode) (nth 4 lastNode)
-                                             (nth 5 lastNode) (nth 6 lastNode) (nth 7 lastNode))
+                                             (nth 5 lastNode) (nth 6 lastNode) (nth 7 lastNode) (nth 8 lastNode))
                            curRun      (list startNode)
                            cumDist     0.0)
                    )
@@ -583,12 +624,13 @@
                  (if (>= (length curRun) 2)
                    (setq allSections (append allSections (list curRun)))
                  )
-                 (setq cumDist 0.0
-                       ilIn    (if (and bdVal (> bdVal 0.005)) (+ ilVal bdVal) ilVal)
-                       ilOut   ilVal
-                       curRun  (list (list mhID 0.0 glVal ilIn ilOut
-                                           (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225")
-                                           matVal gradVal)))
+                 (setq cumDist   0.0
+                       ilIn      (if (and bdVal (> bdVal 0.005)) (+ ilVal bdVal) ilVal)
+                       ilOut     ilVal
+                       calcDepth (if depthVal depthVal (- glVal ilOut))
+                       curRun    (list (list mhID 0.0 glVal ilIn ilOut
+                                             (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225")
+                                             matVal gradVal calcDepth)))
                  (if (and lenVal (> lenVal 0.0))
                    (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal))
                    (setq pendingPipe nil)
@@ -642,15 +684,15 @@
 
   ;; =========================================================================
   ;; 7. LONGITUDINAL SECTION GEOMETRY ENGINE
-  ;;    - IL, GL & Distance placed on RIGHT of Manhole Line (+1050.0)
+  ;;    - Dynamically builds ticked rows (IL, GL, Depth, Distance/Length)
+  ;;    - IL, GL, Depth & Distance placed on RIGHT of Manhole Line (+1050.0)
   ;;    - Backdrop (B/D IL) placed on LEFT of Manhole Line (-1050.0 & -2150.0)
   ;;    - Profile & Shaft Lines trimmed cleanly at Manhole Shaft Walls (+/-375.0)
-  ;;    - Strict 2-Decimal Point (0.00) formatting on all values
   ;; =========================================================================
   (defun draw-long-section (ptBase secNodes hScale vScale datumVal /
-                            x0 y0 hdrW shaftHalfW hMult vMult totalDist xStart xEnd
-                            yLine1 yLine2 yLine3 yRow1 yRow2 yRow3
-                            maxGL n node yTop idx lastIdx mhID dM gl ilIn ilOut xMh
+                            x0 y0 hdrW rowH shaftHalfW hMult vMult totalDist xStart xEnd
+                            curTopY yRowIL yRowGL yRowDepth yRowLen yBottom
+                            maxGL n node yTop idx lastIdx mhID dM gl ilIn ilOut depthM xMh
                             yIlIn yIlOut yGl xTxtRight titleMHs
                             prevNode dPrev xPrev yGlPrev yIlPrevOut spanPrev
                             yGlLeftWall yIlLeftWall
@@ -661,18 +703,13 @@
     (setq x0         (car ptBase)
           y0         (cadr ptBase)
           hdrW       37500.0
+          rowH       5000.0
           shaftHalfW 375.0                 ;; Half-width of Manhole Shaft (375 CAD units each side)
           hMult      (/ 1000000.0 hScale)  ;; 1:1000 -> 1000 CAD units/m
           vMult      (/ 1000000.0 vScale)  ;; 1:200  -> 5000 CAD units/m
           totalDist  (nth 1 (last secNodes))
           xStart     (+ x0 hdrW)
           xEnd       (+ xStart (* totalDist hMult))
-          yLine1     (- y0 5000.0)
-          yLine2     (- y0 10000.0)
-          yLine3     (- y0 15000.0)
-          yRow1      (- y0 2500.0)
-          yRow2      (- y0 7500.0)
-          yRow3      (- y0 12500.0)
           lastIdx    (1- (length secNodes)))
 
     ;; Compute uniform top elevation for vertical manhole lines
@@ -683,30 +720,67 @@
     (setq yTop (max (+ y0 49500.0)
                     (+ y0 (* (- maxGL datumVal) vMult) 15000.0)))
 
-    ;; 1. Draw Horizontal Table Lines trimmed exactly at the Last Manhole Line (xEnd)
-    (mk-line "TITLE" (list x0 y0)     (list xEnd y0)     nil)
-    (mk-line "TITLE" (list x0 yLine1) (list xEnd yLine1) nil)
-    (mk-line "TITLE" (list x0 yLine2) (list xEnd yLine2) nil)
-    (mk-line "TITLE" (list x0 yLine3) (list xEnd yLine3) nil)
-
-    ;; 2. Draw Left Header Labels (Layer "TITLE", Style "T3", Height 1300, Width 0.85)
+    ;; 1. Draw Top Datum Line & DATUM Label
+    (mk-line "TITLE" (list x0 y0) (list xEnd y0) nil)
     (mk-text "TITLE" "T3"
              (strcat "DATUM " (rtos datumVal 2 (if (equal datumVal (fix datumVal) 0.01) 0 2)) "m")
              (list x0 (+ y0 1350.0)) 1300.0 0.0 0.85 0 2)
 
-    (mk-text "TITLE" "T3" "MANHOLES INVERT LEVEL" (list x0 (- y0 1468.0)) 1300.0 0.0 0.85 0 2)
-    (mk-text "TITLE" "T3" "IN METERS"             (list x0 (- y0 3532.0)) 1300.0 0.0 0.85 0 2)
+    ;; 2. Dynamically Build Ticked Table Rows Below Datum (y0)
+    (setq curTopY   y0
+          yRowIL    nil
+          yRowGL    nil
+          yRowDepth nil
+          yRowLen   nil)
 
-    (mk-text "TITLE" "T3" "PROPOSED ROAD LEVEL"   (list x0 (- y0 6468.0)) 1300.0 0.0 0.85 0 2)
-    (mk-text "TITLE" "T3" "IN METERS"             (list x0 (- y0 8532.0)) 1300.0 0.0 0.85 0 2)
+    ;; Row A: Invert Level (IL)
+    (if (= showIL "1")
+      (progn
+        (setq yRowIL (- curTopY 2500.0))
+        (mk-text "TITLE" "T3" "MANHOLES INVERT LEVEL" (list x0 (- curTopY 1468.0)) 1300.0 0.0 0.85 0 2)
+        (mk-text "TITLE" "T3" "IN METERS"             (list x0 (- curTopY 3532.0)) 1300.0 0.0 0.85 0 2)
+        (mk-line "M" (list (+ x0 24000.0) yRowIL) (list (+ x0 35000.0) yRowIL) nil)
+        (setq curTopY (- curTopY rowH))
+        (mk-line "TITLE" (list x0 curTopY) (list xEnd curTopY) nil)
+      )
+    )
 
-    (mk-text "TITLE" "T3" "DISTANCE IN METERS"    (list x0 yRow3)         1300.0 0.0 0.85 0 2)
+    ;; Row B: Ground / Proposed Road Level (GL)
+    (if (= showGL "1")
+      (progn
+        (setq yRowGL (- curTopY 2500.0))
+        (mk-text "TITLE" "T3" "PROPOSED ROAD LEVEL" (list x0 (- curTopY 1468.0)) 1300.0 0.0 0.85 0 2)
+        (mk-text "TITLE" "T3" "IN METERS"           (list x0 (- curTopY 3532.0)) 1300.0 0.0 0.85 0 2)
+        (mk-line "P" (list (+ x0 24000.0) yRowGL) (list (+ x0 35000.0) yRowGL) 2500.0)
+        (setq curTopY (- curTopY rowH))
+        (mk-line "TITLE" (list x0 curTopY) (list xEnd curTopY) nil)
+      )
+    )
 
-    ;; 3. Draw Legend Sample Lines in Header (Length = 11000.0)
-    (mk-line "M" (list (+ x0 24000.0) yRow1) (list (+ x0 35000.0) yRow1) nil)
-    (mk-line "P" (list (+ x0 24000.0) yRow2) (list (+ x0 35000.0) yRow2) 2500.0)
+    ;; Row C: Manhole Depth
+    (if (= showDepth "1")
+      (progn
+        (setq yRowDepth (- curTopY 2500.0))
+        (mk-text "TITLE" "T3" "MANHOLE DEPTH" (list x0 (- curTopY 1468.0)) 1300.0 0.0 0.85 0 2)
+        (mk-text "TITLE" "T3" "IN METERS"     (list x0 (- curTopY 3532.0)) 1300.0 0.0 0.85 0 2)
+        (setq curTopY (- curTopY rowH))
+        (mk-line "TITLE" (list x0 curTopY) (list xEnd curTopY) nil)
+      )
+    )
 
-    ;; 4. Loop Through Manholes: Vertical Lines, Trimmed Shafts, Table Values & Trimmed Profile Lines
+    ;; Row D: Distance / Length in Meters
+    (if (= showLen "1")
+      (progn
+        (setq yRowLen (- curTopY 2500.0))
+        (mk-text "TITLE" "T3" "DISTANCE IN METERS" (list x0 yRowLen) 1300.0 0.0 0.85 0 2)
+        (setq curTopY (- curTopY rowH))
+        (mk-line "TITLE" (list x0 curTopY) (list xEnd curTopY) nil)
+      )
+    )
+
+    (setq yBottom curTopY)
+
+    ;; 3. Loop Through Manholes: Vertical Lines, Trimmed Shafts, Table Values & Trimmed Profile Lines
     (setq idx 0 titleMHs "")
     (while (<= idx lastIdx)
       (setq node   (nth idx secNodes)
@@ -715,6 +789,7 @@
             gl     (nth 2 node)
             ilIn   (nth 3 node)
             ilOut  (nth 4 node)
+            depthM (nth 8 node)
             xMh    (+ xStart (* dM hMult))
             yIlIn  (+ y0 (* (- ilIn  datumVal) vMult))
             yIlOut (+ y0 (* (- ilOut datumVal) vMult))
@@ -722,11 +797,10 @@
 
       (setq titleMHs (if (= titleMHs "") mhID (strcat titleMHs ", " mhID)))
 
-      ;; 4A. Central Vertical Manhole Line trimmed from bottom table line (yLine3) to top (yTop)
-      (mk-line "TITLE" (list xMh yLine3) (list xMh yTop) nil)
+      ;; 3A. Central Vertical Manhole Line trimmed from bottom table line (yBottom) to top (yTop)
+      (mk-line "TITLE" (list xMh yBottom) (list xMh yTop) nil)
 
-      ;; 4B. Compute exact Y intersections at Left Shaft Wall (xMh - 375) and Right Shaft Wall (xMh + 375)
-      ;;     so the shaft side lines and profile lines trim cleanly against each other
+      ;; 3B. Compute exact Y intersections at Left Shaft Wall (xMh - 375) and Right Shaft Wall (xMh + 375)
       (if (> idx 0)
         (progn
           (setq prevNode   (nth (1- idx) secNodes)
@@ -773,27 +847,39 @@
         (mk-line "TITLE" (list (+ xMh shaftHalfW) yIlRightWall) (list (+ xMh shaftHalfW) yGlRightWall) nil)
       )
 
-      ;; 4C. Top Manhole ID Label (Layer "M", Style "T3", Height 1300, Rot 90, Width 0.85, Bottom-Left)
+      ;; 3C. Top Manhole ID Label (Layer "M", Style "T3", Height 1300, Rot 90, Width 0.85, Bottom-Left)
       (mk-text "M" "T3" mhID (list (- xMh 250.0) (- yTop 3700.0)) 1300.0 (/ pi 2.0) 0.85 0 1)
 
-      ;; 4D. Table Values: IL, GL, and Distance (Length) ALWAYS on RIGHT of Manhole Line (+1050.0)
-      ;;     Formatted strictly to 2 decimal places (0.00)
+      ;; 3D. Ticked Table Values: IL, GL, Depth & Distance ALWAYS on RIGHT of Manhole Line (+1050.0)
       (setq xTxtRight (+ xMh 1050.0))
-      (mk-text "DT" "2" (fmt-2dec ilOut) (list xTxtRight yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
-      (mk-text "DT" "2" (fmt-2dec gl)    (list xTxtRight yRow2) 900.0 (/ pi 2.0) 0.85 1 2)
-      (mk-text "DT" "2" (fmt-2dec dM)    (list xTxtRight yRow3) 900.0 (/ pi 2.0) 0.85 1 2)
+      (if yRowIL
+        (mk-text "DT" "2" (fmt-2dec ilOut)  (list xTxtRight yRowIL)    900.0 (/ pi 2.0) 0.85 1 2)
+      )
+      (if yRowGL
+        (mk-text "DT" "2" (fmt-2dec gl)     (list xTxtRight yRowGL)    900.0 (/ pi 2.0) 0.85 1 2)
+      )
+      (if yRowDepth
+        (mk-text "DT" "2" (fmt-2dec depthM) (list xTxtRight yRowDepth) 900.0 (/ pi 2.0) 0.85 1 2)
+      )
+      (if yRowLen
+        (mk-text "DT" "2" (fmt-2dec dM)     (list xTxtRight yRowLen)   900.0 (/ pi 2.0) 0.85 1 2)
+      )
 
-      ;; 4E. Backdrop Info stays on LEFT of Manhole Line (-1050.0 and -2150.0) + vertical drop line
+      ;; 3E. Backdrop Info stays on LEFT of Manhole Line (-1050.0 and -2150.0) + vertical drop line
       (if (and (> idx 0) (> (- ilIn ilOut) 0.01))
         (progn
-          (mk-text "DT" "2" (fmt-2dec ilIn) (list (- xMh 1050.0) yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
-          (mk-text "DT" "2" "B/D IL"        (list (- xMh 2150.0) yRow1) 900.0 (/ pi 2.0) 0.85 1 2)
+          (if yRowIL
+            (progn
+              (mk-text "DT" "2" (fmt-2dec ilIn) (list (- xMh 1050.0) yRowIL) 900.0 (/ pi 2.0) 0.85 1 2)
+              (mk-text "DT" "2" "B/D IL"        (list (- xMh 2150.0) yRowIL) 900.0 (/ pi 2.0) 0.85 1 2)
+            )
+          )
           ;; Vertical backdrop drop line trimmed at the left shaft wall
           (mk-line "M" (list (- xMh shaftHalfW) yIlLeftWall) (list (- xMh shaftHalfW) yIlOut) nil)
         )
       )
 
-      ;; 4F. Connect Profile Lines (Trimmed at Manhole Shaft Walls) & Pipe MTEXT to Next Manhole
+      ;; 3F. Connect Profile Lines (Trimmed at Manhole Shaft Walls) & Pipe MTEXT to Next Manhole
       (if (< idx lastIdx)
         (progn
           (setq segLenM (- dNext dM)
@@ -816,15 +902,17 @@
           ;; Yellow Dashed Proposed Road Profile Line (Trimmed between xMh+375 and xNext-375)
           (mk-line "P" (list xPipe1 yGlRightWall) (list xPipe2 yGlNextLeftWall) 2500.0)
 
-          ;; Pipe Specification MTEXT in Row 1 (2-line for narrow segments < 18m, 1-line otherwise)
-          (if (< (* segLenM (/ 1000.0 hScale)) 18.0)
-            (progn
-              (setq pipeStr (strcat "{\\W0.85;" (nth 5 node) "%%C " (nth 6 node) "\\P1:" (nth 7 node) "}"))
-              (mk-mtext "DT" "2" pipeStr (list xMid (- y0 1400.0)) 900.0 2)
-            )
-            (progn
-              (setq pipeStr (strcat "{\\W0.85;" (nth 5 node) "%%C " (nth 6 node) " 1:" (nth 7 node) "}"))
-              (mk-mtext "DT" "2" pipeStr (list xMid (- y0 2050.0)) 900.0 2)
+          ;; Pipe Specification MTEXT in Invert Level Row (or above datum if IL row unticked)
+          (if yRowIL
+            (if (< (* segLenM (/ 1000.0 hScale)) 18.0)
+              (progn
+                (setq pipeStr (strcat "{\\W0.85;" (nth 5 node) "%%C " (nth 6 node) "\\P1:" (nth 7 node) "}"))
+                (mk-mtext "DT" "2" pipeStr (list xMid (+ yRowIL 1100.0)) 900.0 2)
+              )
+              (progn
+                (setq pipeStr (strcat "{\\W0.85;" (nth 5 node) "%%C " (nth 6 node) " 1:" (nth 7 node) "}"))
+                (mk-mtext "DT" "2" pipeStr (list xMid (+ yRowIL 450.0)) 900.0 2)
+              )
             )
           )
         )
@@ -833,18 +921,18 @@
       (setq idx (1+ idx))
     )
 
-    ;; 5. Bottom Section Title & Scale Annotations (Layer "TITLE", Style "T3")
+    ;; 4. Bottom Section Title & Scale Annotations positioned dynamically below yBottom
     (mk-text "TITLE" "T3"
              (strcat "LONG. SECTION OF " titleMHs)
-             (list x0 (- y0 19000.0)) 2500.0 0.0 0.85 0 0)
+             (list x0 (- yBottom 4000.0)) 2500.0 0.0 0.85 0 0)
 
     (mk-text "TITLE" "T3"
              (strcat "SCALE   HOR = 1:" (itoa (fix hScale)))
-             (list (+ x0 500.0) (- y0 21300.0)) 900.0 0.0 0.85 0 0)
+             (list (+ x0 500.0) (- yBottom 6300.0)) 900.0 0.0 0.85 0 0)
 
     (mk-text "TITLE" "T3"
              (strcat "        VER = 1:" (itoa (fix vScale)))
-             (list (+ x0 500.0) (- y0 22600.0)) 900.0 0.0 0.85 0 0)
+             (list (+ x0 500.0) (- yBottom 7600.0)) 900.0 0.0 0.85 0 0)
 
     ;; Return total width of this generated section
     (- xEnd x0)
@@ -934,7 +1022,7 @@
                           ((= layoutMode "ROW")
                            (setq curPt (list (+ (car curPt) secW gapX) (cadr curPt) 0.0)))
                           ((= layoutMode "COL")
-                           (setq curPt (list (car curPt) (- (cadr curPt) 90000.0) 0.0)))
+                           (setq curPt (list (car curPt) (- (cadr curPt) 95000.0) 0.0)))
                         )
                       )
                     )

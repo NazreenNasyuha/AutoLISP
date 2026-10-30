@@ -2,8 +2,8 @@
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
 ;;; MODULE      : r180.lsp
 ;;; COMMAND     : R180
-;;; DESCRIPTION : Universal In-Place 180-Degree Flipper Around True Visual
-;;;               Middle (Supports 1-Click, Window Multi-Select & All Objects)
+;;; DESCRIPTION : Universal 180-Degree Flipper Around True Visual Middle
+;;;               + Live Cursor-Attached Placement (Click to Place / Enter = Keep)
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
 ;;; ==========================================================================
 
@@ -261,7 +261,10 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 3. FLIP ENGINE (Single Object, Multiple Individual Objects, or Group)
+  ;; 3. FLIP + STICK-TO-CURSOR PLACEMENT ENGINE
+  ;;    1. Rotates 180 deg around true visual middle.
+  ;;    2. Attaches the object's middle to the cursor via _.MOVE so you see a
+  ;;       live preview and can click to place (or press Enter to keep in-place).
   ;; -------------------------------------------------------------------------
   (defun flip-single (ent fallbackPt / baseU)
     (setq baseU (get-true-center-ucs ent))
@@ -269,8 +272,21 @@
     (if baseU
       (progn
         (setvar "CMDECHO" 0)
+        (command "_.UNDO" "_Begin")
+
+        ;; Step 1: Rotate 180 deg around exact middle with OSNAP disabled
         (setvar "OSMODE" 0)
         (command "_.ROTATE" ent "" "_NON" baseU 180.0)
+
+        ;; Step 2: Re-enable user's OSNAP and stick middle of object to cursor until clicked
+        (setvar "OSMODE" oldOs)
+        (princ "\n>> Click to place rotated object (or press Enter to keep in place): ")
+        (command "_.MOVE" ent "" "_NON" baseU pause)
+        (while (> (getvar "CMDACTIVE") 0)
+          (command baseU)
+        )
+
+        (command "_.UNDO" "_End")
         (setvar "OSMODE" oldOs)
         (setvar "CMDECHO" oldCmd)
       )
@@ -280,28 +296,27 @@
   (defun flip-selection (selSet asGroup / i n ent baseU allPts box grpWcs grpUcs)
     (setq n (sslength selSet))
     (setvar "CMDECHO" 0)
-    (setvar "OSMODE" 0)
     (command "_.UNDO" "_Begin")
 
+    ;; Collect bounding box points of the selection to find shared group middle
+    (setq i 0 allPts nil)
+    (while (< i n)
+      (setq box (get-entity-bbox (ssname selSet i)))
+      (if box (setq allPts (cons (car box) (cons (cadr box) allPts))))
+      (setq i (1+ i))
+    )
+    (if allPts
+      (setq grpWcs (list (/ (+ (apply 'min (mapcar 'car allPts)) (apply 'max (mapcar 'car allPts))) 2.0)
+                         (/ (+ (apply 'min (mapcar 'cadr allPts)) (apply 'max (mapcar 'cadr allPts))) 2.0)
+                         0.0)
+            grpUcs (trans grpWcs 0 1))
+    )
+
+    (setvar "OSMODE" 0)
     (if (and asGroup (> n 1))
       ;; GROUP FLIP: Rotate the entire selection together 180 deg around its combined middle
-      (progn
-        (setq i 0 allPts nil)
-        (while (< i n)
-          (setq box (get-entity-bbox (ssname selSet i)))
-          (if box (setq allPts (cons (car box) (cons (cadr box) allPts))))
-          (setq i (1+ i))
-        )
-        (if allPts
-          (progn
-            (setq grpWcs (list (/ (+ (apply 'min (mapcar 'car allPts)) (apply 'max (mapcar 'car allPts))) 2.0)
-                               (/ (+ (apply 'min (mapcar 'cadr allPts)) (apply 'max (mapcar 'cadr allPts))) 2.0)
-                               0.0)
-                  grpUcs (trans grpWcs 0 1))
-            (command "_.ROTATE" selSet "" "_NON" grpUcs 180.0)
-            (princ (strcat "\n>> Flipped " (itoa n) " object(s) 180 deg together around shared group middle."))
-          )
-        )
+      (if grpUcs
+        (command "_.ROTATE" selSet "" "_NON" grpUcs 180.0)
       )
       ;; INDIVIDUAL FLIP: Rotate each object 180 deg in-place around its own true middle
       (progn
@@ -314,7 +329,18 @@
           )
           (setq i (1+ i))
         )
-        (princ (strcat "\n>> Flipped " (itoa n) " object(s) 180 deg in-place around each object's true middle."))
+      )
+    )
+
+    ;; Stick the middle of the rotated selection to the cursor until clicked to place
+    (setvar "OSMODE" oldOs)
+    (if grpUcs
+      (progn
+        (princ (strcat "\n>> Flipped " (itoa n) " object(s) 180 deg. Click to place (or press Enter to keep in place): "))
+        (command "_.MOVE" selSet "" "_NON" grpUcs pause)
+        (while (> (getvar "CMDACTIVE") 0)
+          (command grpUcs)
+        )
       )
     )
 
@@ -324,11 +350,11 @@
   )
 
   ;; =========================================================================
-  ;; 4. MAIN INTERACTIVE LOOP (1-Click Instant Flip + Window Multi-Select)
+  ;; 4. MAIN INTERACTIVE LOOP (1-Click Flip + Stick-to-Cursor Placement)
   ;; =========================================================================
-  (princ "\nCommand: R180 (Universal True-Middle 180-Deg Flipper)")
+  (princ "\nCommand: R180 (Universal True-Middle 180-Deg Flipper + Cursor Place)")
 
-  ;; If objects are already highlighted before running R180, flip them all immediately
+  ;; If objects are already highlighted before running R180, flip & stick to cursor immediately
   (if (setq preSS (ssget "_I"))
     (progn
       (sssetfirst nil nil)
@@ -339,7 +365,7 @@
       (while loop
         (setvar "ERRNO" 0)
         (initget "Multiple Group Undo")
-        (setq sel (entsel "\nClick object to flip 180 deg (or click empty space / [Multiple/Group/Undo]) <Exit>: "))
+        (setq sel (entsel "\nClick object to flip 180 deg & place (or click empty space / [Multiple/Group/Undo]) <Exit>: "))
         (setq errCode (getvar "ERRNO"))
 
         (cond
@@ -361,14 +387,14 @@
              (flip-selection ss T)
            ))
 
-          ;; User typed "U" -> Undo last flip
+          ;; User typed "U" -> Undo last flip + placement
           ((= sel "Undo")
            (setvar "CMDECHO" 0)
            (command "_.U")
            (setvar "CMDECHO" oldCmd)
-           (princ "\n>> Last 180-deg flip undone."))
+           (princ "\n>> Last 180-deg flip & placement undone."))
 
-          ;; User clicked directly on an object -> Instant 1-Click Flip around its true middle
+          ;; User clicked directly on an object -> Instant 1-Click Flip + Stick to Cursor
           ((listp sel)
            (flip-single (car sel) (cadr sel)))
 

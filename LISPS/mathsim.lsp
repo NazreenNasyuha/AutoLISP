@@ -3,9 +3,9 @@
 ;;; MODULE      : mathsim.lsp
 ;;; COMMAND     : MATHSIM (Aliases: TADD, TPLUS, TMINUS, ADDSIM)
 ;;; DESCRIPTION : Select Similar TEXT / MTEXT / MULTILEADER & Add or Subtract
-;;;               a Numeric Value
+;;;               a Numeric Value (Guaranteed Multileader + AutoCAD LT 2024 Safe)
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
-;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD)
 ;;; ==========================================================================
 
 (vl-load-com)
