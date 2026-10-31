@@ -205,38 +205,38 @@
       secSplitMode: 'CROSS', // 'CROSS' = split at MH >= 200m, 'STRICT' = split before exceeding 200m
     };
 
-    // Realistic Demo Datasets for 1-Click Testing
+    // Realistic Demo Datasets for 1-Click Testing (Includes EXTG, STP & CROSSING examples)
     const DEMO_DRAINAGE_DATA = [
-      { 'Drain Name': '1A', 'U-Drain Width / Ø': '600', 'Length': 4.5, 'Grade': '1000', 'Invert Level (Upstream)': '8.70', 'Invert Level (Downstream)': '8.55' },
-      { 'Drain Name': '1B', 'U-Drain Width / Ø': '600', 'Length': 6.0, 'Grade': '1000', 'Invert Level (Upstream)': '8.55', 'Invert Level (Downstream)': '8.40' },
-      { 'Drain Name': '1B', 'U-Drain Width / Ø': '600', 'Length': 10.0, 'Grade': '800', 'Invert Level (Upstream)': '8.40', 'Invert Level (Downstream)': '8.15' },
-      { 'Drain Name': '1C', 'U-Drain Width / Ø': '900', 'Length': 12.0, 'Grade': '800', 'Invert Level (Upstream)': '8.15', 'Invert Level (Downstream)': '7.95' },
-      { 'Drain Name': '1D', 'U-Drain Width / Ø': '1200', 'Length': 14.0, 'Grade': '500', 'Invert Level (Upstream)': '7.95', 'Invert Level (Downstream)': '7.70' },
-      { 'Drain Name': '1E', 'U-Drain Width / Ø': '1200', 'Length': 22.5, 'Grade': '500', 'Invert Level (Upstream)': '7.70', 'Invert Level (Downstream)': '7.40' },
-      { 'Drain Name': '1F', 'U-Drain Width / Ø': '1500', 'Length': 30.0, 'Grade': '400', 'Invert Level (Upstream)': '7.40', 'Invert Level (Downstream)': '7.05' },
+      { 'Drain Name': '1A', 'U-Drain Width / Ø': '600', 'Length': 4.5, 'Grade': '1000', 'Invert Level (Upstream)': '8.70', 'Invert Level (Downstream)': '8.55', 'Remarks': '' },
+      { 'Drain Name': '1B', 'U-Drain Width / Ø': '600', 'Length': 6.0, 'Grade': '1000', 'Invert Level (Upstream)': '8.55', 'Invert Level (Downstream)': '8.40', 'Remarks': '' },
+      { 'Drain Name': '1B', 'U-Drain Width / Ø': '600', 'Length': 10.0, 'Grade': '800', 'Invert Level (Upstream)': '8.40', 'Invert Level (Downstream)': '8.15', 'Remarks': '' },
+      { 'Drain Name': '1C', 'U-Drain Width / Ø': '900', 'Length': 12.0, 'Grade': '800', 'Invert Level (Upstream)': '8.15', 'Invert Level (Downstream)': '7.95', 'Remarks': '' },
+      { 'Drain Name': 'CROSSING 1', 'U-Drain Width / Ø': '1200', 'Length': 14.0, 'Grade': '500', 'Invert Level (Upstream)': '7.95', 'Invert Level (Downstream)': '7.70', 'Remarks': '' },
+      { 'Drain Name': '1E', 'U-Drain Width / Ø': '1200', 'Length': 22.5, 'Grade': '500', 'Invert Level (Upstream)': '7.70', 'Invert Level (Downstream)': '7.40', 'Remarks': 'EXTG SUMP' },
+      { 'Drain Name': 'OUTFALL 1', 'U-Drain Width / Ø': '1500', 'Length': 30.0, 'Grade': '400', 'Invert Level (Upstream)': '7.40', 'Invert Level (Downstream)': '7.05', 'Remarks': 'EXTG' },
     ];
 
     const DEMO_SEWERAGE_DATA = [
-      { 'Manhole No.': 'MH1', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.60', 'Invert Level': '4.74', 'Depth of Manhole': '1.86', 'Backdrop': '' },
-      { 'Manhole No.': 'MH2', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.75', 'Invert Level': '4.52', 'Depth of Manhole': '2.23', 'Backdrop': '' },
-      { 'Manhole No.': 'MH3', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.65', 'Invert Level': '4.30', 'Depth of Manhole': '2.35', 'Backdrop': '' },
-      { 'Manhole No.': 'MH4', 'Length': '27', 'Pipe Size': '225', 'Gradient': '204', 'Pipe Type': 'VCP', 'Ground Level': '6.50', 'Invert Level': '4.08', 'Depth of Manhole': '2.42', 'Backdrop': '' },
-      { 'Manhole No.': 'MH8', 'Length': '',   'Pipe Size': '',    'Gradient': '',    'Pipe Type': '',    'Ground Level': '6.40', 'Invert Level': '3.62', 'Depth of Manhole': '2.78', 'Backdrop': '0.33' },
-      { 'Manhole No.': 'MH21', 'Length': '55', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '16.00', 'Invert Level': '14.12', 'Depth of Manhole': '1.88', 'Backdrop': '' },
-      { 'Manhole No.': 'MH26', 'Length': '9',  'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.80', 'Invert Level': '13.93', 'Depth of Manhole': '1.87', 'Backdrop': '' },
-      { 'Manhole No.': 'MH27', 'Length': '39', 'Pipe Size': '375', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '15.80', 'Invert Level': '13.91', 'Depth of Manhole': '1.89', 'Backdrop': '' },
-      { 'Manhole No.': 'MH28', 'Length': '12', 'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.70', 'Invert Level': '13.78', 'Depth of Manhole': '1.92', 'Backdrop': '' },
-      { 'Manhole No.': 'MH30', 'Length': '19', 'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.70', 'Invert Level': '13.75', 'Depth of Manhole': '1.95', 'Backdrop': '' },
-      { 'Manhole No.': 'MH36', 'Length': '',   'Pipe Size': '',    'Gradient': '',    'Pipe Type': '',    'Ground Level': '15.55', 'Invert Level': '13.70', 'Depth of Manhole': '1.85', 'Backdrop': '' },
+      { 'Manhole No.': 'MH1', 'Type of Building': 'Shoplot', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.60', 'Invert Level': '4.74', 'Depth of Manhole': '1.86', 'Backdrop': '' },
+      { 'Manhole No.': 'MH2', 'Type of Building': 'Shoplot', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.75', 'Invert Level': '4.52', 'Depth of Manhole': '2.23', 'Backdrop': '' },
+      { 'Manhole No.': 'MH3', 'Type of Building': 'Shoplot', 'Length': '65', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '6.65', 'Invert Level': '4.30', 'Depth of Manhole': '2.35', 'Backdrop': '' },
+      { 'Manhole No.': 'MH4', 'Type of Building': 'Shoplot', 'Length': '27', 'Pipe Size': '225', 'Gradient': '204', 'Pipe Type': 'VCP', 'Ground Level': '6.50', 'Invert Level': '4.08', 'Depth of Manhole': '2.42', 'Backdrop': '' },
+      { 'Manhole No.': 'EXTG MH8', 'Type of Building': 'EXTG', 'Length': '', 'Pipe Size': '', 'Gradient': '', 'Pipe Type': '', 'Ground Level': '6.40', 'Invert Level': '3.62', 'Depth of Manhole': '2.78', 'Backdrop': '0.33' },
+      { 'Manhole No.': 'MH21', 'Type of Building': 'Terrace', 'Length': '55', 'Pipe Size': '300', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '16.00', 'Invert Level': '14.12', 'Depth of Manhole': '1.88', 'Backdrop': '' },
+      { 'Manhole No.': 'MH26', 'Type of Building': 'Terrace', 'Length': '9',  'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.80', 'Invert Level': '13.93', 'Depth of Manhole': '1.87', 'Backdrop': '' },
+      { 'Manhole No.': 'MH27', 'Type of Building': 'Terrace', 'Length': '39', 'Pipe Size': '375', 'Gradient': '294', 'Pipe Type': 'VCP', 'Ground Level': '15.80', 'Invert Level': '13.91', 'Depth of Manhole': '1.89', 'Backdrop': '' },
+      { 'Manhole No.': 'MH28', 'Type of Building': 'Terrace', 'Length': '12', 'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.70', 'Invert Level': '13.78', 'Depth of Manhole': '1.92', 'Backdrop': '' },
+      { 'Manhole No.': 'MH30', 'Type of Building': 'Terrace', 'Length': '19', 'Pipe Size': '375', 'Gradient': '400', 'Pipe Type': 'VCP', 'Ground Level': '15.70', 'Invert Level': '13.75', 'Depth of Manhole': '1.95', 'Backdrop': '' },
+      { 'Manhole No.': 'STP',  'Type of Building': 'STP',     'Length': '',   'Pipe Size': '',    'Gradient': '',    'Pipe Type': '',    'Ground Level': '15.55', 'Invert Level': '13.70', 'Depth of Manhole': '1.85', 'Backdrop': '' },
     ];
 
     const DEMO_MIXED_DATA = [
       { 'ID': 'D01', 'Size': '600', 'Length': '5.2', 'Gradient': '1000', 'GL': '', 'IL': '7.32', 'Depth': '' },
-      { 'ID': 'D02', 'Size': '900', 'Length': '10.5', 'Gradient': '800', 'GL': '', 'IL': '7.15', 'Depth': '' },
-      { 'ID': 'D03', 'Size': '1200', 'Length': '24.0', 'Gradient': '500', 'GL': '', 'IL': '6.90', 'Depth': '' },
+      { 'ID': 'EXTG D02', 'Size': '900', 'Length': '10.5', 'Gradient': '800', 'GL': '', 'IL': '7.15', 'Depth': '' },
+      { 'ID': 'OUTFALL', 'Size': '1200', 'Length': '24.0', 'Gradient': '500', 'GL': '', 'IL': '6.90', 'Depth': '' },
       { 'ID': 'MH-01', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '42.10', 'IL': '39.80', 'Depth': '2.30' },
-      { 'ID': 'MH-02', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.80', 'IL': '39.00', 'Depth': '2.80' },
-      { 'ID': 'MH-03', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.20', 'IL': '38.00', 'Depth': '3.20' },
+      { 'ID': 'EXTG MH-02', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.80', 'IL': '39.00', 'Depth': '2.80' },
+      { 'ID': 'STP', 'Size': '', 'Length': '', 'Gradient': '', 'GL': '41.20', 'IL': '38.00', 'Depth': '3.20' },
     ];
 
     function escapeCSV(val) {
@@ -257,13 +257,18 @@
     //                        (b) maps each engineering column by header text
     //                        AND by what the cells actually contain,
     //                        (c) works out how split ID columns combine
-    //                        (e.g. "MH" + "1" -> MH-01, "A" + "1" -> A01).
-    // All functions are pure so they can be unit-tested outside the browser.
+    //                        (e.g. "MH" + "1" -> MH-01, "EXTG" + "MH 1" -> EXTG MH-01,
+    //                         "STP", "OUTFALL", "CROSSING 1", etc.).
     // =============================================================
     const SE_NUM_RE = /^-?\d+(\.\d+)?$/;
     const SE_MARKER_RE = /^\(\s*\d+\s*\)$/;
     const SE_UNIT_RE = /^\(?\s*(m|mm|ha|m2|m\u00b2|m3\/min|m3\/s|m\/s|m\/sec|m\/km|lps|l\/s|yr|yrs|min|mins|mm\/hr|%|nos?\.?)\s*\)?$/i;
-    const SE_MH_FULL_RE = /^MH\s*[-_.]?\s*\d+[A-Za-z]?$/i;
+
+    // Matches standard and special infrastructure IDs: MH1, EXTG MH1, EXTG, STP, SUMP 1, OUTFALL, CROSSING 1, FMH1, PS1, etc.
+    const SE_MH_FULL_RE = /^(?:(?:EXTG\.?|EXISTING|EXT|PROP\.?|PROPOSED|NEW|TO|FROM)\s*[-_.]?\s*)?(?:MH|FMH|SMH|DMH|WMH|STP|PS|SPS|SUMP|OUTFALL|OUTLET|CROSSING|CULVERT|IC)\s*[-_.]?\s*\d*[A-Za-z]?(?:\s*\((?:EXTG\.?|EXISTING|STP|PROP\.?|NEW)\))?$/i;
+
+    // Detects special tags anywhere in a row (EXTG, EXISTING, STP, OUTFALL, SUMP, CROSSING, PUMP STATION, FMH, TIE-IN)
+    const SE_SPECIAL_TAG_EXTRACT_RE = /\b(EXTG\.?\s*MH\s*[-_.]?\s*\d+[A-Za-z]?|EXISTING\s*MH\s*[-_.]?\s*\d+[A-Za-z]?|EXTG\.?\s*MH|EXISTING\s*MH|PROPOSED\s*STP|EXTG\.?\s*STP|STP\s*[-_.]?\s*\d*[A-Za-z]?|EXTG\.?|EXISTING|OUTFALL\s*[-_.]?\s*\d*[A-Za-z]?|OUTLET\s*[-_.]?\s*\d*[A-Za-z]?|PUMP\s*STATION|SPS\s*[-_.]?\s*\d*|FMH\s*[-_.]?\s*\d*[A-Za-z]?|SUMP\s*[-_.]?\s*\d*[A-Za-z]?|CROSSING\s*[-_.]?\s*\d*[A-Za-z]?|TIE[\s-]*IN)\b/i;
 
     const seText = (v) => String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim();
 
@@ -278,18 +283,108 @@
       return s;
     };
 
-    // Joins a split ID ("MH" + "1", "A" + "1", "1" + "A") into one CAD ID.
+    // Joins a split ID ("MH" + "1", "EXTG" + "1", "EXTG. MH" + "1", "STP" + "", "A" + "1", "1" + "A") into one clean CAD ID.
     const composeId = (mainRaw, subRaw) => {
-      const main = String(mainRaw === undefined || mainRaw === null ? '' : mainRaw).trim();
-      const sub = String(subRaw === undefined || subRaw === null ? '' : subRaw).trim().replace(/\.0+$/, '');
-      if (!sub) return main;
-      if (!main) return sub;
-      if (/^MH$/i.test(main)) return `MH-${sub}`;
-      if (/^[A-Za-z]{1,4}$/.test(main) && /^[A-Za-z0-9]+$/.test(sub)) {
-        return sub.toUpperCase().startsWith(main.toUpperCase()) ? sub : `${main}${sub}`;
+      const main = String(mainRaw === undefined || mainRaw === null ? '' : mainRaw).replace(/\s+/g, ' ').trim().replace(/\.0+$/, '');
+      const sub = String(subRaw === undefined || subRaw === null ? '' : subRaw).replace(/\s+/g, ' ').trim().replace(/\.0+$/, '');
+      if (!sub || sub === '-') return main === '-' ? '' : main;
+      if (!main || main === '-') return sub;
+
+      const uMain = main.toUpperCase();
+      const uSub = sub.toUpperCase();
+
+      if (uMain === uSub) return main;
+      if (uSub.startsWith(uMain) && /^[\s\-_.]/.test(uSub.slice(uMain.length))) return sub;
+
+      // "MH" + "1" -> "MH-1" | "MH" + "EXTG 1" -> "EXTG MH-1"
+      if (/^MH$/i.test(main)) {
+        if (/^(EXTG|EXISTING|STP)/i.test(sub)) return `${sub} MH`.replace(/\s+/g, ' ').trim();
+        return `MH-${sub}`;
       }
-      if (/^\d+$/.test(main) && /^[A-Za-z]{1,2}$/.test(sub)) return `${main}${sub.toUpperCase()}`;
-      return main;
+
+      // "EXTG" / "EXTG. MH" / "EXISTING MH" / "STP" / "PROP" + "1" or "MH 1"
+      if (/^(EXTG\.?|EXISTING|EXT|EXTG\.?\s*MH|EXISTING\s*MH|STP|PROP\.?|PROPOSED|NEW|SUMP|OUTFALL|CROSSING|FMH|PS|SPS)$/i.test(main)) {
+        if (/^\d+[A-Za-z]?$/.test(sub)) {
+          if (/^(EXTG\.?|EXISTING|EXT)$/i.test(main)) return `EXTG MH-${sub}`;
+          if (/MH$/i.test(main)) return `EXTG MH-${sub}`;
+          return `${uMain.replace(/\.$/, '')} ${sub}`;
+        }
+        return `${uMain.replace(/\.$/, '')} ${sub}`;
+      }
+
+      // If sub is a special tag like "EXTG" or "STP" and main is "MH 1" or "1"
+      if (/^(EXTG\.?|EXISTING|STP|PROP\.?|NEW|OUTFALL|SUMP)$/i.test(sub)) {
+        return `${main} (${uSub.replace(/\.$/, '')})`;
+      }
+
+      // Short letter prefix + number/alnum (e.g. "A" + "1" -> "A1", "D" + "01" -> "D01")
+      if (/^[A-Za-z]{1,4}$/.test(main) && /^[A-Za-z0-9]+$/.test(sub)) {
+        return uSub.startsWith(uMain) ? sub : `${main}${sub}`;
+      }
+
+      // Number + sub-letter (e.g. "1" + "A" -> "1A")
+      if (/^\d+$/.test(main) && /^[A-Za-z]{1,2}$/.test(sub)) {
+        return `${main}${sub.toUpperCase()}`;
+      }
+
+      return `${main} ${sub}`;
+    };
+
+    // Scans a row for special tags (EXTG, STP, OUTFALL, SUMP, CROSSING, etc.) in ID or descriptor cells
+    // and merges them into the ID if present in that row.
+    const seEnrichIdWithRowTags = (baseId, row, columnMap, columns) => {
+      let id = String(baseId || '').replace(/\s+/g, ' ').trim();
+
+      // Check adjacent/descriptor columns in the row for EXTG, STP, OUTFALL, SUMP, CROSSING, etc.
+      const extraTags = [];
+      const numericCols = new Set([
+        columnMap.size, columnMap.length, columnMap.gradient,
+        columnMap.gl, columnMap.il, columnMap.depth,
+        columnMap.drainIlUp, columnMap.drainIlDown, columnMap.backdrop, columnMap.pipeType
+      ].filter(Boolean));
+
+      columns.forEach((colKey, idx) => {
+        if (numericCols.has(colKey)) return;
+        const cellVal = seText(row[colKey]);
+        if (!cellVal || cellVal === '-' || SE_NUM_RE.test(cellVal)) return;
+        // Skip branch header banners or pipe roughness notes
+        if (/^(PE\s+FROM|TOTAL|NOTE|VALUES\s+INDICATED|REMEMBER\s+TO|NEW\s+PIPE|OLD\s+PIPE|SEWER\s+IL\s+UNDER)/i.test(cellVal)) return;
+        // Only inspect early location/ID/building columns (idx <= 4) or Remarks/Status columns
+        const isEarlyOrRemarkCol = idx <= 4 || /remark|status|location|building|type|receive|note|desc/i.test(colKey);
+        if (!isEarlyOrRemarkCol) return;
+
+        const mTag = cellVal.match(SE_SPECIAL_TAG_EXTRACT_RE);
+        if (mTag) {
+          let tag = mTag[1].toUpperCase().replace(/\s+/g, ' ').replace(/\.$/, '').trim();
+          if (tag === 'EXISTING') tag = 'EXTG';
+          if (tag === 'EXISTING MH' || tag === 'EXTG. MH') tag = 'EXTG MH';
+          if (!extraTags.includes(tag)) extraTags.push(tag);
+        }
+      });
+
+      if (extraTags.length === 0) return id;
+
+      // If the row had no primary ID (e.g. a standalone "STP" or "EXTG MH" row where the ID column was blank),
+      // use the detected special tag as the row ID!
+      if (!id || id === '?') {
+        return extraTags.join(' ');
+      }
+
+      // Otherwise, if the row has a primary ID (e.g. "MH-08" or "1A") and also has a special tag like "EXTG" or "STP"
+      // in the row that isn't already part of the ID string, include it in the ID!
+      const uId = id.toUpperCase();
+      extraTags.forEach(tag => {
+        const coreWord = tag.split(/[\s-]/)[0]; // e.g. 'EXTG', 'STP', 'CROSSING', 'OUTFALL', 'SUMP'
+        if (!uId.includes(coreWord)) {
+          if (tag === 'EXTG' || tag === 'EXTG MH') {
+            id = `EXTG ${id}`;
+          } else {
+            id = `${id} (${tag})`;
+          }
+        }
+      });
+
+      return id.replace(/\s+/g, ' ').trim();
     };
 
     const SE_HEADER_KEY_RES = [
@@ -320,7 +415,6 @@
       if (cells.some(c => SE_MH_FULL_RE.test(c))) return true;
       const nums = cells.filter(c => SE_NUM_RE.test(c));
       if (nums.length === 0) return false;
-      // a bare counter row "1 2 3 4 ..." is a header marker row, not data
       const vals = nums.map(Number);
       const isCounterRow = vals.length >= 2 && vals.every((v, i) => (i === 0 ? v === 1 : v === vals[i - 1] + 1));
       return !isCounterRow;
@@ -330,7 +424,6 @@
       const rowsText = aoa.map(r => (r || []).map(seText));
       if (rowsText.length === 0) return null;
 
-      // 1. Locate the "leaf" header row = the row carrying the most engineering keywords
       const scanLimit = Math.min(rowsText.length, 45);
       let leafRow = -1;
       let bestScore = 0;
@@ -346,7 +439,6 @@
         if (leafRow < 0) return null;
       }
 
-      // 2. Extend downward over unit rows "(m)", counter rows "(1)(2)", etc.
       let lastHdr = leafRow;
       for (let r = leafRow + 1; r < Math.min(rowsText.length, leafRow + 10); r++) {
         const cells = rowsText[r].filter(Boolean);
@@ -362,11 +454,10 @@
         H.push(Array.from({ length: nCols }, (_, c) => rowsText[r][c] || ''));
       }
 
-      // 3. Spread merged header cells over every cell they cover
       merges.forEach(m => {
         const origin = rowsText[m.s.r] ? rowsText[m.s.r][m.s.c] : '';
         if (!origin) return;
-        if (m.e.c - m.s.c + 1 > 14) return; // wide title banners are not column labels
+        if (m.e.c - m.s.c + 1 > 14) return;
         for (let r = Math.max(m.s.r, leafRow); r <= Math.min(m.e.r, lastHdr); r++) {
           for (let c = m.s.c; c <= m.e.c; c++) {
             if (c < nCols && !H[r - leafRow][c]) H[r - leafRow][c] = origin;
@@ -374,7 +465,6 @@
         }
       });
 
-      // 4. Build one readable label per column
       const usable = (t) => t && !SE_MARKER_RE.test(t) && !SE_UNIT_RE.test(t) && !/^1\s*:\s*x$/i.test(t) && !(t.length === 1 && /[A-Za-z0-9]/.test(t));
       const labels = [];
       for (let c = 0; c < nCols; c++) {
@@ -384,7 +474,6 @@
           if (usable(t) && !parts.includes(t)) parts.push(t);
         });
         if (parts.length === 0) {
-          // label sitting a few rows above the detected leaf row
           for (let r = leafRow - 1; r >= Math.max(0, leafRow - 3); r--) {
             const t = rowsText[r][c];
             if (usable(t) && t.length <= 40 && !SE_NUM_RE.test(t)) {
@@ -396,7 +485,6 @@
         labels.push(parts.join(' '));
       }
 
-      // 5. Data rows
       const dataRows = [];
       for (let r = lastHdr + 1; r < rowsText.length; r++) {
         if (rowsText[r].some(Boolean)) dataRows.push(rowsText[r]);
@@ -547,7 +635,6 @@
       if (field === 'gradient') {
         if (prof.numRatio >= 0.6) {
           if (prof.median >= 20) return 3;
-          // 3-cell layout "1 | : | 200"
           if (prof.ratio(/^1$/) >= 0.6 && nextProf && nextProf.ratio(/^:$/) >= 0.6) return 3;
           return -3;
         }
@@ -576,10 +663,10 @@
           p,
           label: String((headerInfo[i] && headerInfo[i].label) || headers[i]).toLowerCase(),
           mhFull: p.ratio(SE_MH_FULL_RE),
-          mhPrefix: p.ratio(/^MH$/i),
-          prefix: p.unique <= 8 ? p.ratio(/^[A-Za-z]{1,4}$/) : 0,
-          int: p.ratio(/^\d{1,4}$/),
-          alnum: p.ratio(/^([A-Za-z]{1,4}\s*[-_]?\s*\d+[A-Za-z]?|\d+[A-Za-z]{1,2})$/),
+          mhPrefix: p.ratio(/^(MH|EXTG\.?|EXISTING|EXTG\.?\s*MH|STP|FMH|SMH|SUMP|OUTFALL|CROSSING)$/i),
+          prefix: p.unique <= 12 ? p.ratio(/^[A-Za-z.\s]{1,10}$/) : 0,
+          int: p.ratio(/^\d{1,4}(\.0+)?$/),
+          alnum: p.ratio(/^([A-Za-z.\s]{1,10}\s*[-_]?\s*\d+[A-Za-z]?|\d+[A-Za-z]{1,2}|STP|EXTG.*|OUTFALL.*|CROSSING.*|SUMP.*)$/i),
           letter1: p.ratio(/^[A-Za-z]$/),
         };
         kinds[i].hdr = SE_ID_HDR_RE.test(kinds[i].label);
@@ -590,10 +677,10 @@
       cands.forEach(i => {
         const k = kinds[i];
         if (k.p.n < 2) return;
-        if (k.mhFull >= 0.5) options.push({ score: 22 + (k.hdr ? 10 : 0), main: i, sub: -1 });
-        else if (k.alnum >= 0.5) options.push({ score: 14 + (k.hdr ? 10 : 0), main: i, sub: -1 });
+        if (k.mhFull >= 0.4) options.push({ score: 22 + (k.hdr ? 10 : 0), main: i, sub: -1 });
+        else if (k.alnum >= 0.4) options.push({ score: 14 + (k.hdr ? 10 : 0), main: i, sub: -1 });
         else if (k.int >= 0.5 && k.hdr) options.push({ score: 12, main: i, sub: -1 });
-        else if (k.hdr && k.p.uniqueRatio >= 0.8 && k.numRatio !== 1) options.push({ score: 8, main: i, sub: -1 });
+        else if (k.hdr && k.p.uniqueRatio >= 0.7 && k.numRatio !== 1) options.push({ score: 8, main: i, sub: -1 });
       });
 
       cands.forEach(i => {
@@ -604,20 +691,20 @@
           if (!kinds[j] || kinds[j].p.n < 2) return;
           const b = kinds[j];
           let base = 0;
-          if (a.prefix >= 0.5 && b.int >= 0.5) base = 26;
-          else if (a.prefix >= 0.5 && b.alnum >= 0.5) base = 22;
-          else if (a.int >= 0.5 && b.letter1 >= 0.5) base = 22;
+          if (a.prefix >= 0.4 && b.int >= 0.4) base = 26;
+          else if (a.prefix >= 0.4 && b.alnum >= 0.4) base = 22;
+          else if (a.int >= 0.4 && b.letter1 >= 0.4) base = 22;
           if (!base) return;
 
           let both = 0;
           for (let r = 0; r < Math.min(rows.length, 400); r++) {
             if (seText(rows[r][headers[i]]) && seText(rows[r][headers[j]])) both++;
           }
-          if (both / Math.max(a.p.n, b.p.n) < 0.5) return;
+          if (both / Math.max(a.p.n, b.p.n) < 0.4) return;
 
           const hasHdr = a.hdr || b.hdr;
-          const mhPrefix = a.mhPrefix >= 0.5;
-          const subUnique = b.p.uniqueRatio >= 0.5;
+          const mhPrefix = a.mhPrefix >= 0.4;
+          const subUnique = b.p.uniqueRatio >= 0.4;
           if (!hasHdr && !mhPrefix && !subUnique) return;
 
           options.push({
@@ -676,7 +763,6 @@
         gl: '', il: '', depth: '', pipeType: '', backdrop: '',
       };
 
-      // -- A. Numeric / attribute columns: header text + cell content, best-first --
       const cands = [];
       Object.keys(SE_FIELD_SPECS).forEach(field => {
         headers.forEach((key, i) => {
@@ -695,7 +781,6 @@
         usedCols.add(c.key);
       });
 
-      // Gradient laid out as three cells "1 | : | 200" -> use the denominator cell
       if (mapping.gradient) {
         const gi = headers.indexOf(mapping.gradient);
         const p0 = profile(headers[gi]);
@@ -706,7 +791,6 @@
         }
       }
 
-      // GL / IL sanity: ground level must sit above invert level
       const reasons = [];
       const notes = [];
       if (mapping.gl && mapping.il) {
@@ -725,7 +809,6 @@
         }
       }
 
-      // -- B. ID column(s) --
       const idPick = seDetectIdColumns(headers, info, rows, profile, usedCols);
       const idInfo = { kind: 'none', mainKey: '', subKey: '', samples: [] };
       if (idPick) {
@@ -741,12 +824,12 @@
 
       const composedIds = [];
       rows.slice(0, 400).forEach(r => {
-        const id = composeId(seText(r[mapping.sewerId]), mapping.sewerIdSub ? seText(r[mapping.sewerIdSub]) : '');
-        if (id && !/^PE\s+FROM/i.test(id)) composedIds.push(id);
+        const rawCombined = composeId(seText(r[mapping.sewerId]), mapping.sewerIdSub ? seText(r[mapping.sewerIdSub]) : '');
+        const enriched = seEnrichIdWithRowTags(rawCombined, r, mapping, headers);
+        if (enriched && !/^PE\s+FROM/i.test(enriched)) composedIds.push(enriched);
       });
-      idInfo.samples = composedIds.filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
+      idInfo.samples = composedIds.filter((v, i, a) => a.indexOf(v) === i).slice(0, 5);
 
-      // -- C. Drainage vs Sewerage classification --
       let sew = 0;
       let drn = 0;
       const sewHits = [];
@@ -761,11 +844,11 @@
       const hasSewerCols = Boolean(mapping.gl || mapping.il || mapping.depth);
       const hasDrainCols = Boolean(mapping.size || mapping.length || mapping.gradient);
 
-      const mhRatio = composedIds.length ? composedIds.filter(v => /^MH/i.test(v)).length / composedIds.length : 0;
+      const mhRatio = composedIds.length ? composedIds.filter(v => /(^|\b)(MH|STP|FMH)/i.test(v)).length / composedIds.length : 0;
       const drainStyleRatio = composedIds.length
-        ? composedIds.filter(v => !/^MH/i.test(v) && /^([A-Za-z]{1,3}[-\s]?\d+[A-Za-z]?|\d+[A-Za-z]{1,2})$/.test(v)).length / composedIds.length
+        ? composedIds.filter(v => !/(^|\b)(MH|STP|FMH)/i.test(v) && /^([A-Za-z]{1,3}[-\s]?\d+[A-Za-z]?|\d+[A-Za-z]{1,2}|CROSSING.*|OUTFALL.*|SUMP.*)$/i.test(v)).length / composedIds.length
         : 0;
-      if (mhRatio >= 0.3) { sew += 8; sewHits.push(`MH IDs in ${Math.round(mhRatio * 100)}% of rows`); }
+      if (mhRatio >= 0.3) { sew += 8; sewHits.push(`MH/STP IDs in ${Math.round(mhRatio * 100)}% of rows`); }
       if (drainStyleRatio >= 0.5 && (drn > 0 || (mapping.size && mapping.length))) {
         drn += 5;
         drnHits.push(`Drain-style IDs in ${Math.round(drainStyleRatio * 100)}% of rows`);
@@ -867,7 +950,7 @@
       const [rawRows, setRawRows] = useState([]);
       const [columns, setColumns] = useState([]);
 
-      // 4. Smart Column Mapping State (Includes Pipe Type & Backdrop for SEWSECTION)
+      // 4. Smart Column Mapping State
       const [columnMap, setColumnMap] = useState({
         drainId: '',
         drainIdSub: '',
@@ -917,13 +1000,11 @@
 
       // ─────────────────────────────────────────────────────────────
       // SMART DISCIPLINE CLASSIFIER & COLUMN DETECTOR
-      // (engine lives in seAnalyzeTable - see SMART SHEET ENGINE above)
       // ─────────────────────────────────────────────────────────────
       const detectColumns = (headerList, sampleRows = [], metaText = '', headerInfo = null) => {
         const res = seAnalyzeTable({ headers: headerList, rows: sampleRows, headerInfo, metaText });
         const notes = [...res.notes];
 
-        // Long Section only exists for sewerage, so never leave a drainage file on SEWSECTION
         if (res.mode === 'DRAINAGE' && targetTool === 'SEWSECTION') {
           setTargetTool('CSVUPDATE');
           notes.push('This is a drainage file and Long Section is sewerage-only, so the tool was switched to CSVUPDATE automatically.');
@@ -951,7 +1032,6 @@
             const data = new Uint8Array(e.target.result);
             const wb = XLSX.read(data, { type: 'array' });
 
-            // Pick the worksheet that really holds the engineering table
             let bestSheet = wb.SheetNames[0];
             let bestScore = -1;
             for (const sn of wb.SheetNames) {
@@ -1056,6 +1136,7 @@
 
       // ─────────────────────────────────────────────────────────────
       // 1. CSVUPDATE ENGINE (Plan View MTEXT & Lowest IL Deduplication)
+      //    Supports EXTG, STP, OUTFALL, SUMP, CROSSING & Custom IDs
       // ─────────────────────────────────────────────────────────────
       const buildDrainageCadString = (id, size, length, gradient) => {
         const widthVal = parseFloat(settings.textWidthFactor) || 0.5;
@@ -1110,11 +1191,58 @@
         return { cadString, glDisplay, ilDisplay, depthDisplay };
       };
 
-      const formatRow = (row) => {
-        if (effectiveMode === 'UNKNOWN') return null; // discipline not confirmed yet - wait for the user's choice
+      // Standardizes Sewer / Drain ID while preserving EXTG, STP, OUTFALL, SUMP, CROSSING, etc.
+      const normalizeCadId = (rawId, isSewerRow) => {
+        const s = String(rawId || '').replace(/\s+/g, ' ').trim();
+        if (!s) return '';
 
-        const sewerIdRaw = composeId(row[columnMap.sewerId], columnMap.sewerIdSub ? row[columnMap.sewerIdSub] : '');
-        const drainIdRaw = composeId(row[columnMap.drainId], columnMap.drainIdSub ? row[columnMap.drainIdSub] : '');
+        if (isSewerRow) {
+          // 1. Pure number: "1" -> "MH-01"
+          const mBare = s.match(/^0*(\d+)(?:\.0+)?([A-Za-z]?)$/);
+          if (mBare) return `MH-${mBare[1].padStart(2, '0')}${mBare[2].toUpperCase()}`;
+
+          // 2. Standard MH with optional prefix/suffix: e.g. "MH 1", "EXTG MH 1", "MH 1 (EXTG)", "MH1 STP"
+          const mPref = s.match(/^(?:(EXTG\.?|EXISTING|PROP\.?|NEW)\s*[-_.]?\s*)?MH\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)(?:\s*\(?([A-Za-z0-9.\s-]+)\)?)?$/i);
+          if (mPref) {
+            const lead = mPref[1] ? `${mPref[1].toUpperCase().replace(/\.$/, '').replace('EXISTING', 'EXTG')} ` : '';
+            const num = mPref[2].padStart(2, '0');
+            const sub = (mPref[3] || '').toUpperCase();
+            const tail = mPref[4] ? ` (${mPref[4].toUpperCase().trim()})` : '';
+            return `${lead}MH-${num}${sub}${tail}`;
+          }
+
+          // 3. Special prefix + number without "MH" (e.g. "EXTG 1" -> "EXTG MH-01", "STP 1" -> "STP-01", "FMH 1" -> "FMH-01")
+          const mSpecNum = s.match(/^(EXTG\.?|EXISTING|STP|FMH|SMH|PS|SPS|SUMP|OUTFALL)\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)$/i);
+          if (mSpecNum) {
+            const tag = mSpecNum[1].toUpperCase().replace(/\.$/, '').replace('EXISTING', 'EXTG');
+            const num = mSpecNum[2].padStart(2, '0');
+            const sub = (mSpecNum[3] || '').toUpperCase();
+            return tag === 'EXTG' ? `EXTG MH-${num}${sub}` : `${tag}-${num}${sub}`;
+          }
+
+          // 4. Standalone special structure (e.g. "STP", "EXTG MH", "OUTFALL", "PUMP STATION")
+          return s.toUpperCase();
+        } else {
+          // Drainage ID normalization (preserves EXTG, CROSSING, OUTFALL, SUMP, etc.)
+          const mDrn = s.match(/^([a-zA-Z]{1,3})\s*[-_]?\s*(\d+)$/);
+          if (mDrn) {
+            const prefix = mDrn[1].toUpperCase();
+            const num = mDrn[2].padStart(2, '0');
+            return `${prefix}${num}`;
+          }
+          return s.toUpperCase();
+        }
+      };
+
+      const formatRow = (row) => {
+        if (effectiveMode === 'UNKNOWN') return null;
+
+        const sewerIdBase = composeId(row[columnMap.sewerId], columnMap.sewerIdSub ? row[columnMap.sewerIdSub] : '');
+        const drainIdBase = composeId(row[columnMap.drainId], columnMap.drainIdSub ? row[columnMap.drainIdSub] : '');
+
+        // Enrich ID with any EXTG / STP / OUTFALL / SUMP / CROSSING tag found in the row
+        const sewerIdRaw = seEnrichIdWithRowTags(sewerIdBase, row, columnMap, columns);
+        const drainIdRaw = seEnrichIdWithRowTags(drainIdBase, row, columnMap, columns);
 
         let glRaw = String(row[columnMap.gl] || '').trim();
         let ilRaw = String(row[columnMap.il] || '').trim();
@@ -1171,37 +1299,21 @@
           if (!hasSewerData) return null;
           isSewerRow = true;
         } else if (effectiveMode === 'DRAINAGE') {
-          if (!hasDrainData) return null;
+          if (!hasDrainData && !hasSewerData) return null;
           isSewerRow = false;
         } else {
-          isSewerRow = hasSewerData && (!hasDrainData || /^MH/i.test(sewerIdRaw));
+          isSewerRow = hasSewerData && (!hasDrainData || /(^|\b)(MH|STP|FMH)/i.test(sewerIdRaw));
         }
 
-        let effectiveId = isSewerRow ? (sewerIdRaw || drainIdRaw) : (drainIdRaw || sewerIdRaw);
-
-        if (isSewerRow) {
-          const mBare = effectiveId.match(/^0*(\d+)(?:\.0+)?([A-Za-z]?)$/);
-          const mPref = effectiveId.match(/^MH\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)$/i);
-          if (mBare) {
-            effectiveId = `MH-${mBare[1].padStart(2, '0')}${mBare[2].toUpperCase()}`;
-          } else if (mPref) {
-            effectiveId = `MH-${mPref[1].padStart(2, '0')}${mPref[2].toUpperCase()}`;
-          }
-        } else {
-          const mDrn = effectiveId.match(/^([a-zA-Z]{1,3})\s*[-_]?\s*(\d+)$/);
-          if (mDrn) {
-            const prefix = mDrn[1].toUpperCase();
-            const num = mDrn[2].padStart(2, '0');
-            effectiveId = `${prefix}${num}`;
-          }
-        }
-
+        let effectiveId = normalizeCadId(isSewerRow ? (sewerIdRaw || drainIdRaw) : (drainIdRaw || sewerIdRaw), isSewerRow);
         if (!effectiveId || effectiveId === '?') return null;
 
         const candidateILs = [ilRaw, ilDownRaw, ilUpRaw]
           .map(v => parseFloat(v))
           .filter(n => !isNaN(n));
         const effectiveIL = candidateILs.length > 0 ? Math.min(...candidateILs) : NaN;
+
+        const hasSpecialTag = SE_SPECIAL_TAG_EXTRACT_RE.test(effectiveId);
 
         if (isSewerRow) {
           const sewBuilt = buildSewerageCadString(
@@ -1215,7 +1327,7 @@
             id: effectiveId,
             category: 'SEWERAGE',
             cadString: sewBuilt.cadString,
-            conditionBadge: 'Manhole (4-Line Label)',
+            conditionBadge: hasSpecialTag ? 'Special Node (EXTG/STP Included)' : 'Manhole (4-Line Label)',
             visualLines,
             effectiveIL,
             drainDetails: { size: sizeRaw, length: lengthRaw, gradient: gradRaw, il: !isNaN(effectiveIL) ? effectiveIL.toFixed(2) : '' },
@@ -1229,7 +1341,7 @@
             id: effectiveId,
             category: 'DRAINAGE',
             cadString: drnBuilt.cadString,
-            conditionBadge: drnBuilt.conditionBadge,
+            conditionBadge: hasSpecialTag ? `${drnBuilt.conditionBadge} • EXTG/Special` : drnBuilt.conditionBadge,
             visualLines,
             effectiveIL,
             drainDetails: {
@@ -1305,6 +1417,7 @@
 
       // ─────────────────────────────────────────────────────────────
       // 2. SEWSECTION ENGINE (Longitudinal Section Profile Chains & 200m Splitter)
+      //    Supports EXTG, STP, OUTFALL, SUMP, FMH & Tagged Manholes
       // ─────────────────────────────────────────────────────────────
       const computeSectionDatum = (nodes) => {
         if (!settings.secAutoDatum) {
@@ -1337,18 +1450,49 @@
           return cleaned ? parseFloat(cleaned) : NaN;
         };
 
-        const formatMhTag = (rawPrefix, rawSub) => {
-          const combined = composeId(rawPrefix, rawSub).trim();
+        // Formats Manhole / Structure IDs while preserving EXTG, STP, OUTFALL, SUMP, FMH, etc.
+        const formatMhTag = (rawPrefix, rawSub, row) => {
+          const baseCombined = composeId(rawPrefix, rawSub).trim();
+          const combined = seEnrichIdWithRowTags(baseCombined, row, columnMap, columns);
           if (!combined) return '';
-          if (/^(PE\s+FROM|TOTAL|REMARK|NOTE|MANHOLE|MH\s*NO|BRANCH)/i.test(combined)) return '';
-          const mMh = combined.match(/^MH\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)$/i);
-          if (mMh) {
-            return `MH${mMh[1]}${mMh[2].toUpperCase()}`;
-          }
+          if (/^(PE\s+FROM|TOTAL|REMARK|NOTE|MANHOLE|MH\s*NO|BRANCH|LOCATION)/i.test(combined)) return '';
+
+          // 1. Pure number (e.g. "1" or "1.0" -> "MH1")
           const mNum = combined.match(/^0*(\d+)(?:\.0+)?([A-Za-z]?)$/);
           if (mNum) {
             return `MH${mNum[1]}${mNum[2].toUpperCase()}`;
           }
+
+          // 2. Standard or Prefixed/Suffixed MH (e.g. "MH 1", "EXTG MH 1", "MH 8 (EXTG)", "MH26 (STP)")
+          const mMh = combined.match(/^(?:(EXTG\.?|EXISTING|PROP\.?|NEW)\s*[-_.]?\s*)?MH\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)(?:\s*\(?([A-Za-z0-9.\s-]+)\)?)?$/i);
+          if (mMh) {
+            const lead = mMh[1] ? `${mMh[1].toUpperCase().replace(/\.$/, '').replace('EXISTING', 'EXTG')} ` : '';
+            const num = mMh[2];
+            const sub = (mMh[3] || '').toUpperCase();
+            const tail = mMh[4] ? ` (${mMh[4].toUpperCase().trim()})` : '';
+            return `${lead}MH${num}${sub}${tail}`;
+          }
+
+          // 3. Number + Tag (e.g. "1 (EXTG)" -> "MH1 (EXTG)", "26 (STP)" -> "MH26 (STP)")
+          const mNumTag = combined.match(/^0*(\d+)(?:\.0+)?([A-Za-z]?)\s*\(([A-Za-z0-9.\s-]+)\)$/);
+          if (mNumTag) {
+            return `MH${mNumTag[1]}${mNumTag[2].toUpperCase()} (${mNumTag[3].toUpperCase().trim()})`;
+          }
+
+          // 4. Special tag + number (e.g. "EXTG 1" -> "EXTG MH1", "STP 1" -> "STP1", "FMH 1" -> "FMH1")
+          const mSpecNum = combined.match(/^(EXTG\.?|EXISTING|STP|FMH|SMH|PS|SPS|SUMP|OUTFALL|CROSSING)\s*[-_.]?\s*0*(\d+)(?:\.0+)?([A-Za-z]?)$/i);
+          if (mSpecNum) {
+            const tag = mSpecNum[1].toUpperCase().replace(/\.$/, '').replace('EXISTING', 'EXTG');
+            const num = mSpecNum[2];
+            const sub = (mSpecNum[3] || '').toUpperCase();
+            return tag === 'EXTG' ? `EXTG MH${num}${sub}` : `${tag}${num}${sub}`;
+          }
+
+          // 5. Any valid standalone special tag or custom structure ID (e.g. "STP", "EXTG MH", "EXTG", "OUTFALL", "PUMP STATION")
+          if (SE_SPECIAL_TAG_EXTRACT_RE.test(combined) || /^[A-Za-z0-9][A-Za-z0-9\s\-_.()]{0,18}$/.test(combined)) {
+            return combined.toUpperCase().replace(/\s+/g, ' ').trim();
+          }
+
           return '';
         };
 
@@ -1370,15 +1514,28 @@
             return;
           }
 
-          const mhID = formatMhTag(rawA, rawB);
+          const mhID = formatMhTag(rawA, rawB, row);
+          if (!mhID) return;
 
           const lenVal = cleanNum(row[columnMap.length]);
           const sizeVal = cleanNum(row[columnMap.size]);
-          const glVal = cleanNum(row[columnMap.gl]);
-          const ilVal = cleanNum(row[columnMap.il]);
+          let glVal = cleanNum(row[columnMap.gl]);
+          let ilVal = cleanNum(row[columnMap.il]);
+          const depthColVal = cleanNum(row[columnMap.depth]);
           const bdVal = cleanNum(row[columnMap.backdrop]);
           let matVal = String(row[columnMap.pipeType] || '').trim().toUpperCase();
           if (!matVal || matVal === '-') matVal = 'VCP';
+
+          // Fallback for terminal EXTG / STP rows where only IL or only GL+Depth is entered
+          if (isNaN(glVal) && !isNaN(ilVal)) {
+            if (!isNaN(depthColVal) && depthColVal > 0) {
+              glVal = ilVal + depthColVal;
+            } else if (curRun.length > 0 && SE_SPECIAL_TAG_EXTRACT_RE.test(mhID)) {
+              glVal = curRun[curRun.length - 1].gl;
+            }
+          } else if (isNaN(ilVal) && !isNaN(glVal) && !isNaN(depthColVal)) {
+            ilVal = glVal - depthColVal;
+          }
 
           // Parse gradient (handles "1:200", "200", or 3-col "1 | : | 200")
           let gradRaw = String(row[columnMap.gradient] || '').trim();
@@ -1397,7 +1554,7 @@
           const gradStr = !isNaN(gradNum) && gradNum > 0 ? String(Math.round(gradNum)) : '200';
           const sizeStr = !isNaN(sizeVal) && sizeVal > 0 ? String(Math.round(sizeVal)) : '225';
 
-          if (!mhID || isNaN(glVal) || isNaN(ilVal)) return;
+          if (isNaN(glVal) || isNaN(ilVal)) return;
 
           // Case 1: Same Manhole ID as last node in curRun (Attaches outgoing pipe & checks Backdrop)
           if (curRun.length > 0 && curRun[curRun.length - 1].id === mhID) {
@@ -1417,7 +1574,7 @@
               pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
             }
           }
-          // Case 2: Downstream Manhole arriving via pendingPipe
+          // Case 2: Downstream Manhole (including EXTG / STP) arriving via pendingPipe
           else if (curRun.length > 0 && pendingPipe) {
             const nextDist = cumDist + pendingPipe.len;
 
@@ -1610,7 +1767,6 @@
         showToast('Exported "AutoCAD_Smart_Import.csv" (2-column MTEXT)!');
       };
 
-      // Dedicated Exporter for SEWSECTION (sewsection.lsp)
       const exportSewSectionCSV = () => {
         if (sewSections.length === 0) {
           alert('No valid Sewerage Longitudinal Section chains found to export.');
@@ -1686,7 +1842,7 @@
                   <div className="flex items-center space-x-2">
                     <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">AutoCAD Smart XLS-to-CSV Bridge</h1>
                     <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cadcyan-500/15 text-cadcyan-400 border border-cadcyan-500/30">
-                      v3.0 JRK
+                      v3.1 JRK
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 hidden sm:block">
@@ -1794,7 +1950,7 @@
                     )}
                   </div>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Batch updates <strong className="text-white">Road Drainage</strong> & <strong className="text-white">Sewerage Manhole</strong> text/multileaders in Plan View. Automatically merges duplicate IDs using the <strong className="text-cadcyan-400">Lowest Invert Level</strong>.
+                    Batch updates <strong className="text-white">Road Drainage</strong> & <strong className="text-white">Sewerage Manhole</strong> text/multileaders in Plan View (including <strong className="text-cadcyan-400">EXTG, STP, OUTFALL, CROSSING</strong>). Merges duplicate IDs using the <strong className="text-cadcyan-400">Lowest Invert Level</strong>.
                   </p>
                 </div>
               </div>
@@ -1830,7 +1986,7 @@
                     )}
                   </div>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Generates <strong className="text-white">Sewerage Longitudinal Section</strong> profiles (<code className="text-cadcyan-400">LONG. SECTION OF MH...</code>) with <strong className="text-white">200m Distance Limit</strong> splitting, <strong className="text-cadcyan-400">Auto +10m Datum</strong>, and Backdrop steps.
+                    Generates <strong className="text-white">Sewerage Longitudinal Section</strong> profiles (<code className="text-cadcyan-400">LONG. SECTION OF MH...</code>) including <strong className="text-cadcyan-400">EXTG & STP</strong> nodes, <strong className="text-white">200m Distance Limit</strong> splitting, and <strong className="text-cadcyan-400">Auto +10m Datum</strong>.
                   </p>
                 </div>
               </div>
@@ -1849,7 +2005,7 @@
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Choose whether this spreadsheet is for <strong className="text-white">Road Drainage Design</strong> (Pipe ID, Size, Length, Gradient) or <strong className="text-white">Sewerage Design</strong> (Manhole ID, GL, IL, Depth). Duplicate IDs automatically keep the <strong className="text-cadcyan-400">Lowest Invert Level (IL)</strong>.
+                    Choose whether this spreadsheet is for <strong className="text-white">Road Drainage Design</strong> or <strong className="text-white">Sewerage Design</strong>. Special tags (<strong className="text-cadcyan-400">EXTG, STP, OUTFALL, CROSSING, SUMP</strong>) in any row are automatically detected and included in the ID.
                   </p>
                 </div>
 
@@ -1910,7 +2066,7 @@
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Configure scales, <strong className="text-white">200m distance splitting</strong>, and <strong className="text-cadcyan-400">Automatic +10m Datum</strong> (adds 10m datum whenever levels are ≥ 10m). Exported CSV loads straight into <code className="text-cadcyan-400">SEWSECTION</code> (<code className="text-cadcyan-400">LONGSEC</code>).
+                    Configure scales, <strong className="text-white">200m distance splitting</strong>, and <strong className="text-cadcyan-400">Automatic +10m Datum</strong>. Automatically detects and includes <strong className="text-cadcyan-400">EXTG, STP, FMH & PS</strong> nodes in the section chain.
                   </p>
                 </div>
 
@@ -2024,7 +2180,7 @@
 
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs text-slate-400">
                   <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cadslate-800 border border-cadslate-700">
-                    ⚡ Smart Sewerage vs. Drainage Classifier
+                    ⚡ Detects EXTG, STP, OUTFALL & CROSSING
                   </span>
                   <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cadslate-800 border border-cadslate-700">
                     📉 Lowest Invert Level Deduplication
@@ -2049,7 +2205,7 @@
                     onClick={() => loadDemo('sewerage')}
                     className="px-2.5 py-1 text-xs font-semibold text-cademerald-400 bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/30 rounded-md transition"
                   >
-                    Sample Sewerage (CSVUPDATE)
+                    Sample Sewerage (EXTG & STP)
                   </button>
                   <button
                     type="button"
@@ -2090,7 +2246,7 @@
                     </div>
                     <div className="text-xs text-slate-400">
                       Found {rawRows.length} raw rows • {targetTool === 'SEWSECTION'
-                        ? `Built ${sewSections.length} Longitudinal Section(s) (${stats.totalSecNodes} Manhole nodes)`
+                        ? `Built ${sewSections.length} Longitudinal Section(s) (${stats.totalSecNodes} Manhole/EXTG/STP nodes)`
                         : `Extracted ${processedRows.length} unique CAD items for CSVUPDATE`}
                     </div>
                   </div>
@@ -2149,7 +2305,7 @@
               const missing = need.filter(([k]) => !columnMap[k]).map(([, label]) => label);
               const previewIds = targetTool === 'SEWSECTION'
                 ? idInfo.samples
-                : processedRows.slice(0, 4).map(r => r.id);
+                : processedRows.slice(0, 5).map(r => r.id);
 
               return (
                 <div className={`bg-cadslate-900 border ${meta.box} rounded-xl p-4 space-y-3 shadow-lg`}>
@@ -2244,6 +2400,7 @@
                           <code className="px-1.5 py-0.5 rounded bg-cadslate-950 border border-cadslate-700 text-cadcyan-300">{idInfo.subKey}</code>
                         </>
                       )}
+                      <span className="text-slate-500">+ Row Tags (EXTG/STP)</span>
                       {previewIds.length > 0 && (
                         <>
                           <span className="text-slate-500">→</span>
@@ -2282,7 +2439,7 @@
                       </h4>
                       <p className="text-xs text-slate-400">
                         {targetTool === 'SEWSECTION'
-                          ? 'Mapping Manhole ID, Pipe Length, Size, Gradient, Pipe Type (VCP/RCP), GL, IL & Backdrop for Longitudinal Section'
+                          ? 'Mapping Manhole/EXTG/STP ID, Pipe Length, Size, Gradient, Pipe Type (VCP/RCP), GL, IL & Backdrop for Longitudinal Section'
                           : `Signals: ${detectionReason} • Duplicate rows automatically merge by lowest Invert Level`}
                       </p>
                     </div>
@@ -2370,7 +2527,7 @@
                         <span>B. Sewerage Manhole & Level Columns</span>
                       </span>
                       <span className="text-[11px] text-slate-400 font-normal">
-                        {targetTool === 'SEWSECTION' ? 'ID, GL, IL, Backdrop (B/D)' : 'ID, GL, Lowest IL, Depth'}
+                        {targetTool === 'SEWSECTION' ? 'ID (MH/EXTG/STP), GL, IL, Backdrop' : 'ID (MH/EXTG/STP), GL, Lowest IL, Depth'}
                       </span>
                     </div>
 
@@ -2580,7 +2737,7 @@
                       No Sewerage Manhole Chains Detected in Current Sheet
                     </div>
                     <p className="text-xs text-slate-400 max-w-lg mx-auto">
-                      To generate a Longitudinal Section (<code className="text-cadcyan-400">SEWSECTION</code>), the spreadsheet needs Manhole IDs, Pipe Lengths, Ground Levels (GL), and Invert Levels (IL).
+                      To generate a Longitudinal Section (<code className="text-cadcyan-400">SEWSECTION</code>), the spreadsheet needs Manhole/EXTG/STP IDs, Pipe Lengths, Ground Levels (GL), and Invert Levels (IL).
                     </p>
                     <button
                       type="button"
@@ -2602,7 +2759,7 @@
                           </span>
                         </h3>
                         <p className="text-xs text-slate-400 mt-0.5">
-                          Click any section tab below to inspect its CAD profile preview, Auto Datum, and manhole chainage table.
+                          Click any section tab below to inspect its CAD profile preview, Auto Datum, and manhole/EXTG/STP chainage table.
                         </p>
                       </div>
 
@@ -2629,7 +2786,6 @@
                       const sec = currentPreviewSection;
                       const datum = sec.datum;
                       const maxGL = Math.max(...sec.nodes.map(n => n.gl));
-                      const minIL = Math.min(...sec.nodes.map(n => n.ilOut));
                       const elevSpan = Math.max(4.0, (maxGL - datum) + 2.0);
                       const totalDist = Math.max(10.0, sec.totalLength);
 
@@ -2687,14 +2843,14 @@
                                     <line x1={x - 2.5} y1={yIlOut} x2={x - 2.5} y2={yGl} stroke="#f8fafc" strokeWidth="1" />
                                     <line x1={x + 2.5} y1={yIlOut} x2={x + 2.5} y2={yGl} stroke="#f8fafc" strokeWidth="1" />
 
-                                    {/* Top Magenta Manhole Label */}
+                                    {/* Top Magenta Manhole / EXTG / STP Label */}
                                     <text
                                       x={x - 4}
-                                      y="36"
+                                      y="42"
                                       fill="#ff00ff"
-                                      fontSize="9.5"
+                                      fontSize="9"
                                       fontWeight="bold"
-                                      transform={`rotate(-90 ${x - 4} 36)`}
+                                      transform={`rotate(-90 ${x - 4} 42)`}
                                     >
                                       {node.id}
                                     </text>
@@ -2724,31 +2880,31 @@
                                       </>
                                     )}
 
-                                    {/* Rotated Table Numbers (IL, GL, Distance) */}
+                                    {/* Rotated Table Numbers (IL, GL, Distance on Right) */}
                                     <text
-                                      x={i === 0 ? x + 8 : x - 5}
+                                      x={x + 8}
                                       y={yDatum + 24}
                                       fill="#f8fafc"
                                       fontSize="7.5"
-                                      transform={`rotate(-90 ${i === 0 ? x + 8 : x - 5} ${yDatum + 24})`}
+                                      transform={`rotate(-90 ${x + 8} ${yDatum + 24})`}
                                     >
                                       {node.ilOut.toFixed(2)}
                                     </text>
                                     <text
-                                      x={i === 0 ? x + 8 : x - 5}
+                                      x={x + 8}
                                       y={yDatum + 54}
                                       fill="#f8fafc"
                                       fontSize="7.5"
-                                      transform={`rotate(-90 ${i === 0 ? x + 8 : x - 5} ${yDatum + 54})`}
+                                      transform={`rotate(-90 ${x + 8} ${yDatum + 54})`}
                                     >
                                       {node.gl.toFixed(2)}
                                     </text>
                                     <text
-                                      x={i === 0 ? x + 8 : x - 5}
+                                      x={x + 8}
                                       y={yDatum + 84}
                                       fill="#f8fafc"
                                       fontSize="7.5"
-                                      transform={`rotate(-90 ${i === 0 ? x + 8 : x - 5} ${yDatum + 84})`}
+                                      transform={`rotate(-90 ${x + 8} ${yDatum + 84})`}
                                     >
                                       {node.dist.toFixed(2)}
                                     </text>
@@ -2772,7 +2928,7 @@
                               <thead>
                                 <tr className="bg-cadslate-950 text-slate-400 border-b border-cadslate-800 uppercase tracking-wider font-semibold">
                                   <th className="py-2.5 px-4">#</th>
-                                  <th className="py-2.5 px-4">Manhole ID</th>
+                                  <th className="py-2.5 px-4">Manhole / Structure ID</th>
                                   <th className="py-2.5 px-4">Chainage Dist (m)</th>
                                   <th className="py-2.5 px-4">Road Level GL (m)</th>
                                   <th className="py-2.5 px-4">Invert Level IL (m)</th>
@@ -2806,7 +2962,7 @@
                                       <td className="py-2.5 px-4">
                                         {!isLast ? (
                                           <span className="text-white bg-cadslate-950 px-2.5 py-1 rounded border border-cadslate-800">
-                                            {n.size}Ø {n.mat} 1:{n.grad} ({segLen.toFixed(1)}m)
+                                            {n.size}Ø {n.mat} 1:{n.grad} ({segLen.toFixed(2)}m)
                                           </span>
                                         ) : (
                                           <span className="text-slate-500 italic">End of Section ({sec.totalLength.toFixed(2)}m)</span>
@@ -2925,7 +3081,7 @@
                     <div className="relative flex-1 md:w-64">
                       <input
                         type="text"
-                        placeholder="Search ID or CAD string..."
+                        placeholder="Search ID (e.g. EXTG, STP, MH)..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cadcyan-500"
@@ -2955,7 +3111,7 @@
                       <tr className="bg-cadslate-950 text-slate-400 border-b border-cadslate-800 uppercase tracking-wider font-semibold">
                         <th className="py-3 px-4 w-12 text-center">#</th>
                         <th className="py-3 px-4 w-28">Discipline</th>
-                        <th className="py-3 px-4 w-32">CAD ID</th>
+                        <th className="py-3 px-4 w-36">CAD ID</th>
                         <th className="py-3 px-4 w-64">Extracted Parameters</th>
                         <th className="py-3 px-4">Generated AutoCAD MTEXT String</th>
                         <th className="py-3 px-4 w-52">Visual CAD Render</th>
@@ -3064,7 +3220,7 @@
                 <span>
                   {targetTool === 'SEWSECTION'
                     ? (sewSections.length > 0
-                        ? `SEWSECTION Mode: Ready to export ${sewSections.length} Longitudinal Section(s) (${stats.totalSecNodes} Manhole nodes)`
+                        ? `SEWSECTION Mode: Ready to export ${sewSections.length} Longitudinal Section(s) (${stats.totalSecNodes} Manhole/EXTG/STP nodes)`
                         : 'SEWSECTION Mode: Upload a Sewerage calculation spreadsheet or load sample')
                     : (processedRows.length > 0
                         ? `CSVUPDATE Mode: Ready to export ${processedRows.length} unique ${effectiveMode} items (Lowest IL applied to ${stats.mergedCount} duplicate IDs)`
@@ -3364,7 +3520,7 @@
           {toastMsg && (
             <div className="fixed bottom-20 right-6 z-50 bg-cadcyan-500 text-black font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-center space-x-2">
               <svg className="w-4 h-4 stroke-[2.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
               <span>{toastMsg}</span>
             </div>
@@ -3378,3 +3534,5 @@
   </script>
 </body>
 </html>
+
+```
