@@ -19,11 +19,29 @@ Engineered from the ground up to be **100% vanilla AutoLISP**—eliminating frag
 
 ```text
 AutoLISP/
-├── index.html                   # Live Web Bridge (Single-page app for GitHub Pages)
-├── bridge/
-│   └── index.html               # Mirrored Web Bridge app
+├── index.html                   # Live Web Bridge root HTML shell (GitHub Pages)
+├── bridge/                      # Modular Web Bridge application
+│   ├── index.html               # Sub-path Web Bridge HTML shell
+│   ├── css/
+│   │   └── styles.css           # Dark/Light theme variables, scrollbars & CAD preview styles
+│   └── js/
+│       ├── tailwind.config.js   # Tailwind CSS theme palette & font configuration
+│       ├── constants.js         # Default settings, storage keys & sample datasets
+│       ├── smart-engine.js      # Pure-JS Smart Sheet Engine (type & column auto-detection)
+│       ├── cad-engine.js        # Pure-JS CAD MTEXT & Longitudinal Section (SEWSECTION) engine
+│       ├── csv-exporter.js      # CSV, Excel template & clipboard export utilities
+│       ├── app.js               # Main React application controller & state orchestrator
+│       └── components/          # Modular React UI components
+│           ├── Header.js        # Top navigation bar, theme toggle & modal triggers
+│           ├── WorkflowBar.js   # CSVUPDATE vs SEWSECTION workflow & profile selector
+│           ├── UploadZone.js    # Drag-and-drop file uploader, samples & worksheet tabs
+│           ├── DetectionPanel.js# File discipline detector, auto-mapping chips & manual mapper
+│           ├── SewSectionView.js# Interactive SVG longitudinal profile & manhole table
+│           ├── CsvUpdateView.js # Plan view MTEXT table, category filters & search
+│           ├── Footer.js        # Sticky status bar & context-aware CSV export actions
+│           └── Modals.js        # SettingsModal, FeedbackModal, GuideModal & Toast
 ├── load-all.lsp                 # Master One-Click Loader (root entrypoint)
-├── LISPS/                       # Dedicated directory for all 15 AutoLISP routines
+├── LISPS/                       # Dedicated directory for all AutoLISP routines
 │   ├── catchmentarea.lsp        # 4-corner catchment & roof ridge splitter
 │   ├── csvupdate.lsp            # 5-column CSV injection & red QA/QC verification
 │   ├── epalink.lsp              # EPANET pipe results hexagon & text annotator
@@ -38,6 +56,7 @@ AutoLISP/
 │   ├── pipec.lsp                # Road drainage generator (sumps, arrows, SIL leaders)
 │   ├── r180.lsp                 # Single-click 180-degree entity flip about centroid
 │   ├── sewpipec.lsp             # Sewerage network generator (manholes, IL leaders)
+│   ├── sewsection.lsp           # Automated sewer longitudinal section generator
 │   └── tseq.lsp                 # Smart alphanumeric sequence renumbering engine
 ├── 404.html                     # GitHub Pages fallback routing
 ├── .nojekyll                    # Disables Jekyll processing for GitHub Pages

@@ -1,0 +1,132 @@
+/* ============================================================================
+ * JRK AutoCAD Smart XLS-to-CSV Bridge — Theme & Component Styles
+ * ============================================================================ */
+
+/* Default Dark Mode CSS Variables (JRK Deep Forest/Slate) */
+:root,
+html.dark {
+  --s-950: 7 13 10;     /* #070d0a Main background */
+  --s-900: 13 23 18;    /* #0d1712 Card surface */
+  --s-850: 18 32 25;    /* #122019 Secondary bar */
+  --s-800: 27 47 37;    /* #1b2f25 Borders & dividers */
+  --s-750: 36 62 49;    /* #243e31 Hover surface */
+  --s-700: 48 82 65;    /* #305241 Input borders */
+  --scroll-track: #0d1712;
+  --scroll-thumb: #243e31;
+  --scroll-hover: #00b050;
+}
+
+/* Light Mode CSS Variables (Clean Engineering Paper & JRK Green) */
+html.light {
+  --s-950: 241 245 243; /* #f1f5f3 Soft page background */
+  --s-900: 255 255 255; /* #ffffff Crisp white card surface */
+  --s-850: 246 250 248; /* #f6faf8 Sub-header surface */
+  --s-800: 218 231 224; /* #dae7e0 Crisp border */
+  --s-750: 232 243 237; /* #e8f3ed Hover surface */
+  --s-700: 185 210 196; /* #b9d2c4 Input border */
+  --scroll-track: #f1f5f3;
+  --scroll-thumb: #b9d2c4;
+  --scroll-hover: #00b050;
+}
+
+/* Light mode text & badge contrast adjustments */
+html.light body {
+  color: #0f172a;
+}
+
+html.light .text-white {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-100,
+html.light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+html.light .text-slate-300 {
+  color: #334155 !important;
+}
+
+html.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.light .text-cadcyan-300,
+html.light .text-cadcyan-400 {
+  color: #008a3e !important;
+}
+
+html.light .text-emerald-300,
+html.light .text-emerald-400,
+html.light .text-cademerald-400 {
+  color: #047857 !important;
+}
+
+html.light .text-amber-300,
+html.light .text-amber-400 {
+  color: #b45309 !important;
+}
+
+html.light .bg-cadcyan-950\/50,
+html.light .bg-cadcyan-950\/60,
+html.light .bg-cadcyan-950\/30 {
+  background-color: rgba(0, 176, 80, 0.10) !important;
+}
+
+html.light .bg-emerald-950\/50 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+html.light .bg-amber-950\/50 {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+}
+
+html.light .bg-purple-950\/50 {
+  background-color: rgba(168, 85, 247, 0.12) !important;
+}
+
+html.light .text-purple-300 {
+  color: #6b21a8 !important;
+}
+
+html.light .bg-fuchsia-950\/50 {
+  background-color: rgba(217, 70, 239, 0.12) !important;
+}
+
+html.light .text-fuchsia-300,
+html.light .text-fuchsia-400 {
+  color: #a21caf !important;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-hover);
+}
+
+/* CAD Canvas Simulation Style (Always dark like AutoCAD Modelspace) */
+.cad-preview-box {
+  background-color: #050807;
+  background-image:
+    radial-gradient(#1b2f25 0.75px, transparent 0.75px),
+    radial-gradient(#1b2f25 0.75px, #050807 0.75px);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
+html.light .cad-preview-box .cad-preview-line {
+  color: #f8fafc !important;
+}
