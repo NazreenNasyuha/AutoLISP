@@ -50,3 +50,7 @@ Icon
 *.sublime-workspace
 *.swp
 *~
+
+# Local-Only Agent & Living Architecture Documentation (Never commit to public)
+ARCHITECTURE.md
+AGENTS.md
