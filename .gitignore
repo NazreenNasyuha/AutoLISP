@@ -54,3 +54,5 @@ Icon
 # Local-Only Agent & Living Architecture Documentation (Never commit to public)
 ARCHITECTURE.md
 AGENTS.md
+architecture.md
+agents.md
