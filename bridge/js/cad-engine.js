@@ -103,6 +103,54 @@ function normalizeCadId(rawId, isSewerRow) {
   }
 }
 
+// Evaluates Civil Engineering QA/QC rules for a row or node
+function evaluateQaWarnings({ isSewerRow, gl, il, depth, ilIn, ilOut, ilUp, ilDown, bd, grad }) {
+  const warnings = [];
+  const numGL = parseFloat(gl);
+  const numIL = parseFloat(il);
+  const numDepth = !isNaN(parseFloat(depth))
+    ? parseFloat(depth)
+    : (!isNaN(numGL) && !isNaN(numIL) ? numGL - numIL : NaN);
+  const numIlIn = parseFloat(ilIn);
+  const numIlOut = parseFloat(ilOut);
+  const numIlUp = parseFloat(ilUp);
+  const numIlDown = parseFloat(ilDown);
+  const numBd = parseFloat(bd);
+  const numGrad = parseFloat(grad);
+
+  // 1. Reverse pipe slope / backfall (FromIL_Out < ToIL_In or Upstream IL < Downstream IL)
+  if (!isNaN(numIlUp) && !isNaN(numIlDown) && numIlUp < numIlDown - 0.001) {
+    warnings.push(`Backfall (Up IL ${numIlUp.toFixed(2)}m < Down IL ${numIlDown.toFixed(2)}m)`);
+  }
+  if (!isNaN(numIlIn) && !isNaN(numIlOut) && numIlIn < numIlOut - 0.001) {
+    warnings.push(`Reverse MH Drop (IL In ${numIlIn.toFixed(2)}m < IL Out ${numIlOut.toFixed(2)}m)`);
+  }
+
+  // 2. Shallow depth (< 1.2m)
+  if (isSewerRow && !isNaN(numDepth) && numDepth > 0 && numDepth < 1.2) {
+    warnings.push(`Shallow Depth (${numDepth.toFixed(2)}m < 1.20m)`);
+  }
+
+  // 3. Backdrop manhole requirement (ilIn - ilOut >= 0.60m)
+  const dropVal = !isNaN(numBd) && numBd > 0
+    ? numBd
+    : (!isNaN(numIlIn) && !isNaN(numIlOut) ? (numIlIn - numIlOut) : NaN);
+  if (isSewerRow && !isNaN(dropVal) && dropVal >= 0.60) {
+    warnings.push(`Backdrop Required (Drop ${dropVal.toFixed(2)}m >= 0.60m)`);
+  }
+
+  // 4. Extreme gradients (< 1:15 or > 1:500)
+  if (!isNaN(numGrad) && numGrad > 0) {
+    if (numGrad < 15) {
+      warnings.push(`Extreme Steep Gradient (1:${Math.round(numGrad)} < 1:15)`);
+    } else if (numGrad > 500) {
+      warnings.push(`Extreme Flat Gradient (1:${Math.round(numGrad)} > 1:500)`);
+    }
+  }
+
+  return warnings;
+}
+
 function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
   if (effectiveMode === 'UNKNOWN') return null;
 
@@ -118,6 +166,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
   let sizeRaw = String(row[columnMap.size] || '').trim();
   let lengthRaw = String(row[columnMap.length] || '').trim();
   let gradRaw = String(row[columnMap.gradient] || '').trim();
+  let bdRaw = String(row[columnMap.backdrop] || '').trim();
 
   if (gradRaw === '1' && columnMap.gradient) {
     const gIdx = columns.indexOf(columnMap.gradient);
@@ -146,6 +195,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
   depthRaw = cleanNumber(depthRaw);
   ilUpRaw = cleanNumber(ilUpRaw);
   ilDownRaw = cleanNumber(ilDownRaw);
+  bdRaw = cleanNumber(bdRaw);
 
   if (settings.cleanGradientPrefix) {
     gradRaw = gradRaw.replace(/^1\s*[:/]\s*/i, '');
@@ -180,6 +230,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
     .map(v => parseFloat(v))
     .filter(n => !isNaN(n));
   const effectiveIL = candidateILs.length > 0 ? Math.min(...candidateILs) : NaN;
+  const maxCandidateIL = candidateILs.length > 0 ? Math.max(...candidateILs) : NaN;
 
   const hasSpecialTag = SE_SPECIAL_TAG_EXTRACT_RE.test(effectiveId);
 
@@ -192,6 +243,18 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       settings
     );
     const visualLines = sewBuilt.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
+    const qaWarnings = evaluateQaWarnings({
+      isSewerRow: true,
+      gl: sewBuilt.glDisplay,
+      il: sewBuilt.ilDisplay,
+      depth: sewBuilt.depthDisplay,
+      ilIn: !isNaN(maxCandidateIL) ? maxCandidateIL : ilUpRaw,
+      ilOut: !isNaN(effectiveIL) ? effectiveIL : ilDownRaw,
+      ilUp: ilUpRaw,
+      ilDown: ilDownRaw,
+      bd: bdRaw,
+      grad: gradRaw,
+    });
     return {
       id: effectiveId,
       category: 'SEWERAGE',
@@ -199,6 +262,8 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       conditionBadge: hasSpecialTag ? 'Special Node (EXTG/STP Included)' : 'Manhole (4-Line Label)',
       visualLines,
       effectiveIL,
+      maxIL: maxCandidateIL,
+      qaWarnings,
       drainDetails: { size: sizeRaw, length: lengthRaw, gradient: gradRaw, il: !isNaN(effectiveIL) ? effectiveIL.toFixed(2) : '' },
       sewerDetails: { gl: sewBuilt.glDisplay, il: sewBuilt.ilDisplay, depth: sewBuilt.depthDisplay },
       rawRow: row,
@@ -206,6 +271,16 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
   } else {
     const drnBuilt = buildDrainageCadString(effectiveId, sizeRaw, lengthRaw, gradRaw, settings);
     const visualLines = drnBuilt.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
+    const qaWarnings = evaluateQaWarnings({
+      isSewerRow: false,
+      gl: glRaw,
+      il: !isNaN(effectiveIL) ? effectiveIL : ilRaw,
+      depth: depthRaw,
+      ilUp: ilUpRaw,
+      ilDown: ilDownRaw,
+      bd: bdRaw,
+      grad: drnBuilt.gradDisplay,
+    });
     return {
       id: effectiveId,
       category: 'DRAINAGE',
@@ -213,6 +288,8 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       conditionBadge: hasSpecialTag ? `${drnBuilt.conditionBadge} • EXTG/Special` : drnBuilt.conditionBadge,
       visualLines,
       effectiveIL,
+      maxIL: maxCandidateIL,
+      qaWarnings,
       drainDetails: {
         size: drnBuilt.sizeDisplay,
         length: drnBuilt.lenDisplay,
@@ -231,16 +308,50 @@ function processAndDeduplicateRows(rawRows, { effectiveMode, columnMap, columns,
     .filter(Boolean);
   const uniqueMap = new Map();
 
+  // Check sequential connected rows for reverse pipe slope / backfall (FromIL_Out < ToIL_In)
+  for (let i = 0; i < rawFormatted.length - 1; i++) {
+    const curr = rawFormatted[i];
+    const next = rawFormatted[i + 1];
+    const spanLen = parseFloat(curr.drainDetails && curr.drainDetails.length);
+    if (
+      curr.id.toUpperCase() !== next.id.toUpperCase() &&
+      !isNaN(spanLen) && spanLen > 0 &&
+      !isNaN(curr.effectiveIL) && !isNaN(next.effectiveIL) &&
+      curr.effectiveIL < next.effectiveIL - 0.001
+    ) {
+      const bfMsg = `Backfall (${curr.id} IL ${curr.effectiveIL.toFixed(2)}m < ${next.id} IL ${next.effectiveIL.toFixed(2)}m)`;
+      if (!curr.qaWarnings.includes(bfMsg)) {
+        curr.qaWarnings.push(bfMsg);
+      }
+    }
+  }
+
   rawFormatted.forEach(item => {
     const cleanId = item.id.toUpperCase();
 
     if (!uniqueMap.has(cleanId)) {
-      uniqueMap.set(cleanId, { ...item, duplicateCount: 1 });
+      uniqueMap.set(cleanId, { ...item, duplicateCount: 1, qaWarnings: [...(item.qaWarnings || [])] });
     } else {
       const existing = uniqueMap.get(cleanId);
       const dupCount = (existing.duplicateCount || 1) + 1;
       const existingIL = existing.effectiveIL;
       const newIL = item.effectiveIL;
+      const combinedMaxIL = Math.max(
+        !isNaN(existing.maxIL) ? existing.maxIL : (!isNaN(existingIL) ? existingIL : -Infinity),
+        !isNaN(item.maxIL) ? item.maxIL : (!isNaN(newIL) ? newIL : -Infinity)
+      );
+      const combinedMinIL = Math.min(
+        !isNaN(existingIL) ? existingIL : Infinity,
+        !isNaN(newIL) ? newIL : Infinity
+      );
+
+      const mergedWarnings = Array.from(new Set([...(existing.qaWarnings || []), ...(item.qaWarnings || [])]));
+      if (item.category === 'SEWERAGE' && isFinite(combinedMaxIL) && isFinite(combinedMinIL)) {
+        const drop = combinedMaxIL - combinedMinIL;
+        if (drop >= 0.60 && !mergedWarnings.some(w => w.startsWith('Backdrop Required'))) {
+          mergedWarnings.push(`Backdrop Required (Drop ${drop.toFixed(2)}m >= 0.60m)`);
+        }
+      }
 
       const newIsLower = (!isNaN(newIL) && (isNaN(existingIL) || newIL < existingIL));
 
@@ -248,10 +359,22 @@ function processAndDeduplicateRows(rawRows, { effectiveMode, columnMap, columns,
         if (newIsLower) {
           const gl = parseFloat(item.sewerDetails.gl) || parseFloat(existing.sewerDetails.gl) || 0;
           const sewBuilt = buildSewerageCadString(item.id, gl.toFixed(2), newIL.toFixed(2), '', settings);
+          const recomputedWarnings = evaluateQaWarnings({
+            isSewerRow: true,
+            gl: sewBuilt.glDisplay,
+            il: sewBuilt.ilDisplay,
+            depth: sewBuilt.depthDisplay,
+            ilIn: isFinite(combinedMaxIL) ? combinedMaxIL : NaN,
+            ilOut: newIL,
+            grad: item.drainDetails.gradient || existing.drainDetails.gradient,
+          });
+          const allWarnings = Array.from(new Set([...mergedWarnings.filter(w => !w.startsWith('Shallow Depth')), ...recomputedWarnings]));
           const updatedItem = {
             ...item,
             duplicateCount: dupCount,
             effectiveIL: newIL,
+            maxIL: isFinite(combinedMaxIL) ? combinedMaxIL : newIL,
+            qaWarnings: allWarnings,
             cadString: sewBuilt.cadString,
             sewerDetails: { gl: sewBuilt.glDisplay, il: sewBuilt.ilDisplay, depth: sewBuilt.depthDisplay },
             conditionBadge: `Merged ${dupCount} Rows (Lowest IL: ${newIL.toFixed(2)}m)`,
@@ -261,6 +384,8 @@ function processAndDeduplicateRows(rawRows, { effectiveMode, columnMap, columns,
         } else {
           const bestILText = !isNaN(existingIL) ? `${existingIL.toFixed(2)}m` : 'Kept';
           existing.duplicateCount = dupCount;
+          existing.maxIL = isFinite(combinedMaxIL) ? combinedMaxIL : existing.maxIL;
+          existing.qaWarnings = mergedWarnings;
           existing.conditionBadge = `Merged ${dupCount} Rows (Lowest IL: ${bestILText})`;
         }
       } else {
@@ -269,12 +394,15 @@ function processAndDeduplicateRows(rawRows, { effectiveMode, columnMap, columns,
             ...item,
             duplicateCount: dupCount,
             effectiveIL: newIL,
+            maxIL: isFinite(combinedMaxIL) ? combinedMaxIL : newIL,
+            qaWarnings: mergedWarnings,
             conditionBadge: `${item.conditionBadge} • Lowest IL (${newIL.toFixed(2)}m of ${dupCount})`,
           };
           uniqueMap.set(cleanId, updatedItem);
         } else {
           const bestILText = !isNaN(existingIL) ? `${existingIL.toFixed(2)}m` : 'Kept';
           existing.duplicateCount = dupCount;
+          existing.qaWarnings = mergedWarnings;
           if (!existing.conditionBadge.includes('Lowest IL')) {
             existing.conditionBadge = `${existing.conditionBadge} • Lowest IL (${bestILText} of ${dupCount})`;
           }
@@ -366,18 +494,11 @@ function buildSewSections(rawRows, { columnMap, columns, settings }) {
     const rawCheck = `${String(rawA || '')} ${String(rawB || '')}`.trim().toUpperCase();
 
     if (rawCheck.startsWith('PE FROM') || rawCheck.startsWith('BRANCH')) {
-      if (curRun.length >= 2) {
-        allSections.push(curRun);
-      }
-      curRun = [];
       pendingPipe = null;
-      cumDist = 0.0;
       return;
     }
 
-    const mhID = formatMhTag(rawA, rawB, row);
-    if (!mhID) return;
-
+    let mhID = formatMhTag(rawA, rawB, row);
     const lenVal = cleanNum(row[columnMap.length]);
     const sizeVal = cleanNum(row[columnMap.size]);
     let glVal = cleanNum(row[columnMap.gl]);
@@ -387,14 +508,23 @@ function buildSewSections(rawRows, { columnMap, columns, settings }) {
     let matVal = String(row[columnMap.pipeType] || '').trim().toUpperCase();
     if (!matVal || matVal === '-') matVal = 'VCP';
 
+    if (!mhID && curRun.length > 0 && (!isNaN(glVal) || !isNaN(ilVal) || !isNaN(lenVal))) {
+      mhID = curRun[curRun.length - 1].id;
+    }
+    if (!mhID) return;
+
     if (isNaN(glVal) && !isNaN(ilVal)) {
       if (!isNaN(depthColVal) && depthColVal > 0) {
         glVal = ilVal + depthColVal;
-      } else if (curRun.length > 0 && SE_SPECIAL_TAG_EXTRACT_RE.test(mhID)) {
+      } else if (curRun.length > 0 && (curRun[curRun.length - 1].id === mhID || SE_SPECIAL_TAG_EXTRACT_RE.test(mhID))) {
         glVal = curRun[curRun.length - 1].gl;
       }
-    } else if (isNaN(ilVal) && !isNaN(glVal) && !isNaN(depthColVal)) {
-      ilVal = glVal - depthColVal;
+    } else if (isNaN(ilVal) && !isNaN(glVal)) {
+      if (!isNaN(depthColVal) && depthColVal > 0) {
+        ilVal = glVal - depthColVal;
+      } else if (curRun.length > 0 && curRun[curRun.length - 1].id === mhID) {
+        ilVal = curRun[curRun.length - 1].ilOut;
+      }
     }
 
     let gradRaw = String(row[columnMap.gradient] || '').trim();
@@ -415,18 +545,30 @@ function buildSewSections(rawRows, { columnMap, columns, settings }) {
 
     if (isNaN(glVal) || isNaN(ilVal)) return;
 
-    // Case 1: Same Manhole ID as last node in curRun
+    // Case 1: Same Manhole ID as last node in curRun -> update to Highest GL & Lowest IL
     if (curRun.length > 0 && curRun[curRun.length - 1].id === mhID) {
       const lastNode = curRun[curRun.length - 1];
-      if (ilVal < lastNode.ilIn - 0.005) {
-        lastNode.ilOut = ilVal;
-      }
-      if (!isNaN(bdVal) && bdVal > 0.005 && Math.abs(lastNode.ilIn - lastNode.ilOut) < 0.005) {
-        lastNode.ilIn = lastNode.ilOut + bdVal;
-      }
+      lastNode.gl = Math.max(lastNode.gl, glVal);
+      lastNode.ilIn = Math.max(lastNode.ilIn, ilVal);
+      lastNode.ilOut = Math.min(lastNode.ilOut, ilVal);
+      lastNode.depth = lastNode.gl - lastNode.ilOut;
+      lastNode.bd = (lastNode.ilIn - lastNode.ilOut) > 0.005 ? (lastNode.ilIn - lastNode.ilOut) : 0;
+
       if (!isNaN(sizeVal) && sizeVal > 0) lastNode.size = sizeStr;
       if (matVal) lastNode.mat = matVal;
       if (!isNaN(gradNum) && gradNum > 0) lastNode.grad = gradStr;
+
+      if (curRun.length === 1 && allSections.length > 0) {
+        const prevSec = allSections[allSections.length - 1];
+        const prevLast = prevSec[prevSec.length - 1];
+        if (prevLast && prevLast.id === mhID) {
+          prevLast.gl = Math.max(prevLast.gl, lastNode.gl);
+          prevLast.ilIn = Math.max(prevLast.ilIn, lastNode.ilIn);
+          prevLast.ilOut = Math.min(prevLast.ilOut, lastNode.ilOut);
+          prevLast.depth = prevLast.gl - prevLast.ilOut;
+          prevLast.bd = (prevLast.ilIn - prevLast.ilOut) > 0.005 ? (prevLast.ilIn - prevLast.ilOut) : 0;
+        }
+      }
 
       if (!isNaN(lenVal) && lenVal > 0) {
         lastNode.outLen = lenVal;
@@ -437,96 +579,138 @@ function buildSewSections(rawRows, { columnMap, columns, settings }) {
     else if (curRun.length > 0 && pendingPipe) {
       const nextDist = cumDist + pendingPipe.len;
 
-      if (splitMode === 'STRICT' && nextDist > limitM && curRun.length >= 2) {
-        allSections.push(curRun);
-        const prevLast = curRun[curRun.length - 1];
-        curRun = [{
-          ...prevLast,
-          dist: 0.0,
-          ilIn: prevLast.ilOut,
-          ilOut: prevLast.ilOut,
-        }];
-        cumDist = pendingPipe.len;
-      } else {
-        cumDist = nextDist;
+        if (
+          curRun.length >= 2 &&
+          ((splitMode === 'STRICT' && nextDist > limitM) ||
+            (splitMode === 'CROSS' && cumDist >= limitM))
+        ) {
+          allSections.push(curRun);
+          const prevLast = curRun[curRun.length - 1];
+          curRun = [{
+            ...prevLast,
+            dist: 0.0,
+            ilIn: prevLast.ilOut,
+            ilOut: prevLast.ilOut,
+            bd: 0,
+          }];
+          cumDist = pendingPipe.len;
+        } else {
+          cumDist = nextDist;
+        }
+
+        const hasSingleRowBd = !isNaN(bdVal) && bdVal > 0.005 && (isNaN(lenVal) || lenVal <= 0);
+        const ilIn = hasSingleRowBd ? (ilVal + bdVal) : ilVal;
+        const newNode = {
+          id: mhID,
+          dist: cumDist,
+          gl: glVal,
+          ilIn,
+          ilOut: ilVal,
+          depth: glVal - ilVal,
+          bd: hasSingleRowBd ? bdVal : 0,
+          size: sizeStr,
+          mat: matVal,
+          grad: gradStr,
+          outLen: (!isNaN(lenVal) && lenVal > 0) ? lenVal : null,
+        };
+        curRun.push(newNode);
+
+        if (!isNaN(lenVal) && lenVal > 0) {
+          pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
+        } else {
+          pendingPipe = null;
+        }
       }
-
-      const ilIn = (!isNaN(bdVal) && bdVal > 0.005) ? (ilVal + bdVal) : ilVal;
-      const newNode = {
-        id: mhID,
-        dist: cumDist,
-        gl: glVal,
-        ilIn,
-        ilOut: ilVal,
-        depth: glVal - ilVal,
-        bd: (!isNaN(bdVal) && bdVal > 0.005) ? bdVal : 0,
-        size: sizeStr,
-        mat: matVal,
-        grad: gradStr,
-        outLen: (!isNaN(lenVal) && lenVal > 0) ? lenVal : null,
-      };
-      curRun.push(newNode);
-
-      if (!isNaN(lenVal) && lenVal > 0) {
-        pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
-      } else {
-        pendingPipe = null;
-      }
-
-      if (splitMode === 'CROSS' && cumDist >= limitM && pendingPipe) {
-        allSections.push(curRun);
-        curRun = [{
-          ...newNode,
-          dist: 0.0,
-          ilIn: newNode.ilOut,
-          ilOut: newNode.ilOut,
-          bd: 0,
-        }];
+      // Case 3: Start of a New Branch
+      else {
+        if (curRun.length >= 2) {
+          allSections.push(curRun);
+        }
         cumDist = 0.0;
+        const hasSingleRowBd = !isNaN(bdVal) && bdVal > 0.005 && (isNaN(lenVal) || lenVal <= 0);
+        const ilIn = hasSingleRowBd ? (ilVal + bdVal) : ilVal;
+        const firstNode = {
+          id: mhID,
+          dist: 0.0,
+          gl: glVal,
+          ilIn,
+          ilOut: ilVal,
+          depth: glVal - ilVal,
+          bd: hasSingleRowBd ? bdVal : 0,
+          size: sizeStr,
+          mat: matVal,
+          grad: gradStr,
+          outLen: (!isNaN(lenVal) && lenVal > 0) ? lenVal : null,
+        };
+        curRun = [firstNode];
+        if (!isNaN(lenVal) && lenVal > 0) {
+          pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
+        } else {
+          pendingPipe = null;
+        }
       }
-    }
-    // Case 3: Start of a New Branch
-    else {
-      if (curRun.length >= 2) {
-        allSections.push(curRun);
-      }
-      cumDist = 0.0;
-      const ilIn = (!isNaN(bdVal) && bdVal > 0.005) ? (ilVal + bdVal) : ilVal;
-      const firstNode = {
-        id: mhID,
-        dist: 0.0,
-        gl: glVal,
-        ilIn,
-        ilOut: ilVal,
-        depth: glVal - ilVal,
-        bd: (!isNaN(bdVal) && bdVal > 0.005) ? bdVal : 0,
-        size: sizeStr,
-        mat: matVal,
-        grad: gradStr,
-        outLen: (!isNaN(lenVal) && lenVal > 0) ? lenVal : null,
-      };
-      curRun = [firstNode];
-      if (!isNaN(lenVal) && lenVal > 0) {
-        pendingPipe = { len: lenVal, size: sizeStr, mat: matVal, grad: gradStr };
-      } else {
-        pendingPipe = null;
-      }
-    }
-  });
+    });
 
   if (curRun.length >= 2) {
     allSections.push(curRun);
   }
 
   return allSections.map((nodes, idx) => {
+    nodes.forEach((node, nIdx) => {
+      const nodeWarnings = [];
+      const spanWarnings = [];
+      const nodeDepth = node.gl - node.ilOut;
+      const nodeDrop = node.ilIn - node.ilOut;
+
+      // 1. Shallow depth (< 1.2m)
+      if (!isNaN(nodeDepth) && nodeDepth > 0 && nodeDepth < 1.2) {
+        nodeWarnings.push(`Shallow Depth (${nodeDepth.toFixed(2)}m < 1.20m)`);
+      }
+
+      // 2. Backdrop manhole requirement (ilIn - ilOut >= 0.60m)
+      if (!isNaN(nodeDrop) && nodeDrop >= 0.60) {
+        nodeWarnings.push(`Backdrop Required (Drop ${nodeDrop.toFixed(2)}m >= 0.60m)`);
+      }
+
+      // Outgoing pipe span checks (to next node in section)
+      if (nIdx < nodes.length - 1) {
+        const nextNode = nodes[nIdx + 1];
+        // 3. Reverse pipe slope / backfall (FromIL_Out < ToIL_In)
+        if (!isNaN(node.ilOut) && !isNaN(nextNode.ilIn) && node.ilOut < nextNode.ilIn - 0.001) {
+          const bfMsg = `Backfall (${node.id} IL ${node.ilOut.toFixed(2)}m < ${nextNode.id} IL ${nextNode.ilIn.toFixed(2)}m)`;
+          nodeWarnings.push(bfMsg);
+          spanWarnings.push(bfMsg);
+        }
+
+        // 4. Extreme gradients (< 1:15 or > 1:500)
+        const gNum = parseFloat(node.grad);
+        if (!isNaN(gNum) && gNum > 0) {
+          if (gNum < 15) {
+            const stMsg = `Extreme Steep Gradient (1:${Math.round(gNum)} < 1:15)`;
+            nodeWarnings.push(stMsg);
+            spanWarnings.push(stMsg);
+          } else if (gNum > 500) {
+            const flMsg = `Extreme Flat Gradient (1:${Math.round(gNum)} > 1:500)`;
+            nodeWarnings.push(flMsg);
+            spanWarnings.push(flMsg);
+          }
+        }
+      }
+
+      node.qaWarnings = nodeWarnings;
+      node.spanQaWarnings = spanWarnings;
+    });
+
     const datum = computeSectionDatum(nodes, settings);
     const titleMHs = nodes.map(n => n.id).join(', ');
     const totalLength = nodes[nodes.length - 1].dist;
+    const qaWarningCount = nodes.reduce((acc, n) => acc + (n.qaWarnings ? n.qaWarnings.length : 0), 0);
     return {
       index: idx + 1,
       title: `LONG. SECTION OF ${titleMHs}`,
       datum,
       totalLength,
+      qaWarningCount,
       nodes,
     };
   });
@@ -540,13 +724,15 @@ function filterCadRows(processedRows, { filterCategory, searchTerm }) {
     if (filterCategory === 'MEDIUM' && !item.conditionBadge.includes('Medium')) return false;
     if (filterCategory === 'LONG' && !item.conditionBadge.includes('Long')) return false;
     if (filterCategory === 'MERGED' && !(item.duplicateCount > 1)) return false;
+    if (filterCategory === 'QA_WARN' && !(item.qaWarnings && item.qaWarnings.length > 0)) return false;
 
     if (!searchTerm.trim()) return true;
     const s = searchTerm.toLowerCase();
     return (
       item.id.toLowerCase().includes(s) ||
       item.cadString.toLowerCase().includes(s) ||
-      item.conditionBadge.toLowerCase().includes(s)
+      item.conditionBadge.toLowerCase().includes(s) ||
+      (item.qaWarnings && item.qaWarnings.some(w => w.toLowerCase().includes(s)))
     );
   });
 }
@@ -559,13 +745,27 @@ function computeCadStats(processedRows, sewSections) {
   const medCount = processedRows.filter(r => r.conditionBadge.includes('Medium')).length;
   const longCount = processedRows.filter(r => r.conditionBadge.includes('Long') || r.conditionBadge.includes('OFF')).length;
   const mergedCount = processedRows.filter(r => r.duplicateCount > 1).length;
+  const qaWarningCount = processedRows.filter(r => r.qaWarnings && r.qaWarnings.length > 0).length;
   const totalSecNodes = sewSections.reduce((acc, s) => acc + s.nodes.length, 0);
-  return { total, drainageCount, sewerageCount, shortCount, medCount, longCount, mergedCount, totalSecNodes };
+  const totalSecWarnings = sewSections.reduce((acc, s) => acc + (s.qaWarningCount || 0), 0);
+  return {
+    total,
+    drainageCount,
+    sewerageCount,
+    shortCount,
+    medCount,
+    longCount,
+    mergedCount,
+    qaWarningCount,
+    totalSecNodes,
+    totalSecWarnings,
+  };
 }
 
 window.buildDrainageCadString = buildDrainageCadString;
 window.buildSewerageCadString = buildSewerageCadString;
 window.normalizeCadId = normalizeCadId;
+window.evaluateQaWarnings = evaluateQaWarnings;
 window.formatCadRow = formatCadRow;
 window.processAndDeduplicateRows = processAndDeduplicateRows;
 window.computeSectionDatum = computeSectionDatum;

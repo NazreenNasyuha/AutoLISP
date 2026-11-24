@@ -2,10 +2,11 @@
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
 ;;; MODULE      : tseq.lsp
 ;;; COMMAND     : TSEQ
-;;; DESCRIPTION : Universal Smart ID Sequencer (AutoCAD 2024+ / LT 2024+ /
-;;;               GstarCAD Proof). Auto-detects the ID in ANY Text, MText,
-;;;               Multileader, or Block Attribute and updates ONLY the ID
-;;;               while locking all formatting and engineering details.
+;;; DESCRIPTION : Universal Smart ID Sequencer (v6.0 - Any Pipe Detail Proof).
+;;;               Auto-detects the ID across ANY delimiter (",", ";", ":",
+;;;               " - ", "/", space, or "\P") and ANY diameter symbol
+;;;               (%%c, Ø, ∅, \U+2205, \U+00F8, mm, box size) in TEXT, MTEXT,
+;;;               MULTILEADER, or ATTRIB while locking all pipe details.
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD)
 ;;; ==========================================================================
 
@@ -14,7 +15,8 @@
 (defun c:tseq ( / *error* oldCmd defSeq userSeq currStr parsed seqType pre val pad
                   loop sel ent subEnt pt ssPick elist entType oldTxt res mode oldID newTxt
                   history lastItem
-                  ts:trim get-text put-text
+                  ts:trim ts:digit-p ts:lead-digits ts:starts-with-3digits-p
+                  get-text put-text
                   replace-id split-str pad-num )
 
   (setq oldCmd (getvar "CMDECHO"))
@@ -28,7 +30,9 @@
     (princ)
   )
 
-  ;; Pure AutoLISP string trimmer
+  ;; =========================================================================
+  ;; 1. PURE AUTOLISP STRING & TOKEN HELPERS
+  ;; =========================================================================
   (defun ts:trim (s / len i1 i2)
     (if (or (null s) (/= (type s) 'STR))
       ""
@@ -45,8 +49,34 @@
     )
   )
 
+  (defun ts:digit-p (ch / a)
+    (if (= ch "")
+      nil
+      (progn
+        (setq a (ascii ch))
+        (and (>= a 48) (<= a 57))
+      )
+    )
+  )
+
+  ;; Counts how many consecutive digits appear at the start of string `s`
+  (defun ts:lead-digits (s / len i)
+    (setq len (strlen s) i 1)
+    (while (and (<= i len) (ts:digit-p (substr s i 1)))
+      (setq i (1+ i))
+    )
+    (1- i)
+  )
+
+  ;; Checks if string `s` starts (after optional spaces) with a 3-or-4 digit pipe size (e.g. "600...", "1200...")
+  (defun ts:starts-with-3digits-p (s / trimmed nDig)
+    (setq trimmed (ts:trim s)
+          nDig    (ts:lead-digits trimmed))
+    (and (>= nDig 3) (<= nDig 4))
+  )
+
   ;; =========================================================================
-  ;; 1. 3-LAYER UNIVERSAL TEXT READER & WRITER (AutoCAD 2024+ / LT 2024+ Proof)
+  ;; 2. 3-LAYER UNIVERSAL TEXT READER & WRITER (AutoCAD 2024+ / LT 2024+ Proof)
   ;;    Supports TEXT, MTEXT, MULTILEADER, ATTRIB, and ATTDEF
   ;; =========================================================================
   (defun get-text (ent / elist typ res obj item)
@@ -179,19 +209,21 @@
   )
 
   ;; =========================================================================
-  ;; 2. UNIVERSAL MTEXT INLINE PREFIX STRIPPER & SMART ID DETECTOR
-  ;;    Handles ANY MText / Text / MLeader format in ANY drawing:
-  ;;    - "{\W0.5;A01; 600%%c 28m 1:000}"    -> Replaces "A01"
-  ;;    - "{\fArial|b1;{\W0.8;A01}; 600%%c}" -> Replaces "A01"
-  ;;    - "A29g: 600%%c 20m 1:000"           -> Replaces "A29g"
-  ;;    - "A01 600%%c 20m 1:500"             -> Replaces "A01"
-  ;;    - "MH-01;\PGL: 34.50m\PIL: 32.10m"   -> Replaces "MH-01"
-  ;;    - "MH 01\PGL=13.40\PIL=10.40"        -> Replaces "MH 01"
-  ;;    - "{\W0.5;D01}" or "MH-01"           -> Replaces "D01" / "MH-01"
+  ;; 3. VERSATILE PIPE / DRAIN / MANHOLE ID DETECTOR & REPLACER
+  ;;    Handles ANY pipe detail delimiter & diameter symbol:
+  ;;    - Comma (with or without space): "5c,600Ø 17m 1:100" -> "6a,600Ø 17m 1:100"
+  ;;    - Semicolon                    : "{\W0.5;A01; 600%%c 28m 1:000}"
+  ;;    - Colon                        : "A29g: 600%%c 20m 1:000"
+  ;;    - Space                        : "A01 600%%c 20m 1:500" or "5c 600x600 17m"
+  ;;    - Spaced Dash or Slash         : "5c - 600%%c 17m" or "5c/600%%c 17m"
+  ;;    - Multi-line                   : "A01\P600%%c\P6m\P1:1000"
+  ;;    - Manhole Callout              : "MH-01;\PGL: 34.50m\PIL: 32.10m"
+  ;;    - Single-Token ID              : "D01", "5c", "MH-01"
   ;; =========================================================================
   (defun replace-id (txt newID / len i loopP ch sec semi stylePrefix remTxt uRem
-                                 pSemi pColon pSlashP pCR pLF pBrace pSpace
-                                 pDia endPos p suffix oldID)
+                                 pSemi pComma pColon pSlash pDashSp pSlashP pCR pLF pBrace pSpace
+                                 diaMarkers m pos pDia nLead afterLead startsWithBareDia
+                                 punctCands firstPunct endPos p suffix oldID)
     (setq len (strlen txt) i 1 loopP T)
 
     ;; Step A: Walk past ALL leading MTEXT formatting codes ({\W0.5;, {\f...;, \A1;, \pxqc;, etc.)
@@ -217,31 +249,69 @@
     (setq remTxt      (substr txt i))
     (setq uRem        (strcase remTxt))
 
-    ;; Step B: Locate structural delimiters in the visible text
+    ;; Step B: Locate all structural delimiters in the visible text
     (setq pSemi   (vl-string-search ";" remTxt)
+          pComma  (vl-string-search "," remTxt)
           pColon  (vl-string-search ":" remTxt)
+          pSlash  (vl-string-search "/" remTxt)
+          pDashSp (vl-string-search " - " remTxt)
           pSlashP (vl-string-search "\\P" uRem)
           pCR     (vl-string-search "\r" remTxt)
           pLF     (vl-string-search "\n" remTxt)
           pBrace  (vl-string-search "}" remTxt)
-          pSpace  (vl-string-search " " remTxt)
-          pDia    (cond
-                    ((vl-string-search "%%C" uRem))
-                    ((vl-string-search "MM" uRem))
-                    ((vl-string-search "\\U+00F8" uRem))
-                    ((vl-string-search "Ø" uRem))
-                    ((vl-string-search "DIA" uRem))
-                    (T nil)))
+          pSpace  (vl-string-search " " remTxt))
+
+    ;; Find earliest diameter / pipe specification marker across all CAD symbols
+    (setq diaMarkers '("%%C" "MM" "\\U+00F8" "\\U+00D8" "\\U+2205" "\\U+2300" "Ø" "∅" "⌀" "DIA" "VCP" "RCP" "HDPE" "UPVC")
+          pDia       nil)
+    (foreach m diaMarkers
+      (setq pos (vl-string-search m uRem))
+      (if (and pos (or (null pDia) (< pos pDia)))
+        (setq pDia pos)
+      )
+    )
+
+    ;; Check if label starts DIRECTLY with a 3-or-4 digit pipe diameter (e.g. "600%%c 17m" or "225mm%%c VCP")
+    ;; Note: "5c,600Ø" has only 1 leading digit ("5") followed by "C,", so nLead=1 -> NEVER mistaken for bare diameter!
+    (setq nLead             (ts:lead-digits uRem)
+          afterLead         (ts:trim (substr uRem (1+ nLead)))
+          startsWithBareDia (and (>= nLead 3)
+                                 (<= nLead 4)
+                                 (or (wcmatch afterLead "MM*,%%C*,\\U+*,Ø*,∅*,⌀*,DIA*,VCP*,RCP*,HDPE*,UPVC*,X#*")
+                                     (and pDia (<= pDia 5)))))
+
+    ;; Gather earliest punctuation delimiter (",", ";", ":", " - ", "/") that separates ID from pipe details
+    (setq punctCands nil)
+    (if pSemi
+      (setq punctCands (cons pSemi punctCands))
+    )
+    (if (and pComma (or (null pDia) (< pComma pDia) (<= pComma 15)))
+      (setq punctCands (cons pComma punctCands))
+    )
+    (if (and pDashSp (or (null pDia) (< pDashSp pDia) (<= pDashSp 15)))
+      (setq punctCands (cons pDashSp punctCands))
+    )
+    (if (and pSlash
+             (or (null pSlashP) (< pSlash pSlashP))
+             (or (null pDia) (< pSlash pDia))
+             (<= pSlash 12))
+      (setq punctCands (cons pSlash punctCands))
+    )
+    (if (and pColon
+             (not (wcmatch uRem "1:#*"))
+             (or (and pDia (< pColon pDia)) (< pColon 10)))
+      (setq punctCands (cons pColon punctCands))
+    )
 
     (cond
       ;; ---------------------------------------------------------------------
       ;; CASE 1: SEWERAGE MANHOLE (Contains GL=, IL=, GL:, IL:, D=, or DEPTH)
-      ;; Replaces ONLY the Manhole ID before ";", "\P", or "}"
+      ;; Replaces ONLY the Manhole ID before ";", ",", "\P", or "}"
       ;; ---------------------------------------------------------------------
       ((or (wcmatch uRem "*GL=*,*IL=*,*GL:*,*IL:*,*DEPTH*,*\\PD=*")
            (and (wcmatch uRem "MH*,*MANHOLE*") (or pSlashP pCR pLF)))
        (setq endPos (strlen remTxt))
-       (foreach p (list pSemi pSlashP pCR pLF pBrace)
+       (foreach p (list pSemi pComma pSlashP pCR pLF pBrace)
          (if (and p (< p endPos)) (setq endPos p))
        )
        (setq oldID  (substr remTxt 1 endPos)
@@ -250,21 +320,20 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 2: UN-ID'D SEWER PIPE (Starts directly with pipe diameter like "225mm%%c VCP")
-      ;; Protects pipe specifications if there is no ID prefix
+      ;; CASE 2: UN-ID'D PIPE (Starts directly with 3-4 digit pipe diameter like "225mm%%c VCP" or "600Ø 17m")
+      ;; Protects pipe specifications when there is no ID prefix
       ;; ---------------------------------------------------------------------
-      ((and (null pSemi)
-            (or (wcmatch uRem "###MM*,####MM*,###%%C*,####%%C*,###Ø*,####Ø*,### VCP*,### RCP*,### HDPE*")
-                (and pDia (<= pDia 4) (>= (ascii (substr uRem 1 1)) 48) (<= (ascii (substr uRem 1 1)) 57))))
+      (startsWithBareDia
        (list "SEWER_PIPE_NO_ID" "" txt)
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 3: DRAINAGE / PIPE LABEL WITH ";" DELIMITER
-      ;; (e.g. "A01; 600%%c 28m 1:000" or "{\fArial;A01}; 600%%c")
+      ;; CASE 3: PUNCTUATION-SEPARATED PIPE DETAIL (",", ";", ":", " - ", "/")
+      ;; Handles "5c,600Ø 17m 1:100", "A01; 600%%c 28m 1:000", "A29g: 600%%c", etc.
       ;; ---------------------------------------------------------------------
-      (pSemi
-       (setq endPos pSemi)
+      (punctCands
+       (setq firstPunct (apply 'min punctCands)
+             endPos     firstPunct)
        (foreach p (list pSlashP pCR pLF pBrace)
          (if (and p (< p endPos)) (setq endPos p))
        )
@@ -274,26 +343,13 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 4: DRAINAGE / PIPE LABEL WITH ":" DELIMITER BEFORE DIAMETER
-      ;; (e.g. "A29g: 600%%c 20m 1:000" -> catches ":" after A29g, NOT in 1:000)
+      ;; CASE 4: SPACE-SEPARATED PIPE DETAIL (No ",", ";", or ":")
+      ;; Handles "A01 600%%c 20m 1:500", "5c 600Ø 17m 1:100", "5c 600x600 17m"
       ;; ---------------------------------------------------------------------
-      ((and pColon
-            (not (wcmatch uRem "1:#*"))
-            (or (and pDia (< pColon pDia)) (< pColon 10)))
-       (setq endPos pColon)
-       (foreach p (list pSlashP pCR pLF pBrace)
-         (if (and p (< p endPos)) (setq endPos p))
-       )
-       (setq oldID  (substr remTxt 1 endPos)
-             suffix (substr remTxt (1+ endPos)))
-       (list "DRAIN_PIPE" oldID (strcat stylePrefix newID suffix))
-      )
-
-      ;; ---------------------------------------------------------------------
-      ;; CASE 5: SPACE-SEPARATED PIPE LABEL (No ";" or ":", e.g. "A01 600%%c 20m 1:500")
-      ;; Replaces the ID token before the first space while keeping " 600%%c..."
-      ;; ---------------------------------------------------------------------
-      ((and pSpace pDia (< pSpace pDia) (<= pSpace 12))
+      ((and pSpace
+            (<= pSpace 15)
+            (or (and pDia (< pSpace pDia))
+                (ts:starts-with-3digits-p (substr uRem (+ pSpace 2)))))
        (setq endPos pSpace)
        (foreach p (list pSlashP pCR pLF pBrace)
          (if (and p (< p endPos)) (setq endPos p))
@@ -304,7 +360,7 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 6: MULTI-LINE LABEL WITHOUT ";" (Replaces Line 1 ID before \P)
+      ;; CASE 5: MULTI-LINE LABEL WITHOUT PUNCTUATION (Replaces Line 1 ID before \P)
       ;; ---------------------------------------------------------------------
       ((or pSlashP pCR pLF)
        (setq endPos (strlen remTxt))
@@ -317,7 +373,7 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 7: SINGLE-TOKEN ID (e.g. "D01", "{\W0.5;A01}", "MH-01", "1A")
+      ;; CASE 6: SINGLE-TOKEN ID (e.g. "D01", "{\W0.5;5c}", "MH-01", "1A")
       ;; ---------------------------------------------------------------------
       (T
        (setq endPos (if pBrace pBrace (strlen remTxt)))
@@ -329,10 +385,10 @@
   )
 
   ;; =========================================================================
-  ;; 3. SEQUENCE PARSER & INCREMENTER
+  ;; 4. SEQUENCE PARSER & INCREMENTER
   ;;    Supports:
   ;;    - Numeric suffix : "A01" -> "A02", "MH-01" -> "MH-02", "1" -> "2"
-  ;;    - Alpha suffix   : "1A"  -> "1B",  "53a"   -> "53b"
+  ;;    - Alpha suffix   : "5c"  -> "5d",  "1A"    -> "1B"
   ;; =========================================================================
   (defun split-str (str / len i numStr lst)
     (setq str (ts:trim str)
@@ -357,13 +413,13 @@
     s
   )
 
-  (princ "\nCommand: TSEQ v5.0 (AutoCAD 2024+ Universal ID Detector & Sequencer)")
+  (princ "\nCommand: TSEQ v6.0 (Universal Pipe & Manhole ID Sequencer)")
 
   ;; =========================================================================
-  ;; 4. STARTING ID SETUP (Type Starting ID or Press Enter for Default)
+  ;; 5. STARTING ID SETUP (Type Starting ID or Press Enter for Default)
   ;; =========================================================================
   (setq defSeq "A01")
-  (setq userSeq (getstring T (strcat "\nEnter starting ID (e.g. A01, 1A, MH-01) or press Enter for <" defSeq ">: ")))
+  (setq userSeq (getstring T (strcat "\nEnter starting ID (e.g. 5c, A01, 1A, MH-01) or press Enter for <" defSeq ">: ")))
   (setq currStr (if (= (ts:trim userSeq) "") defSeq (ts:trim userSeq)))
 
   (setq parsed  (split-str currStr)
@@ -375,7 +431,7 @@
         loop    T)
 
   ;; =========================================================================
-  ;; 5. CLICK-TO-RENAME LOOP (With Click-Through, Pick-Sample & Undo)
+  ;; 6. CLICK-TO-RENAME LOOP (With Click-Through, Pick-Sample & Undo)
   ;; =========================================================================
   (while loop
     (initget "Set Pick Undo")
@@ -482,7 +538,7 @@
                  newTxt (nth 2 res))
 
            (if (= mode "SEWER_PIPE_NO_ID")
-             (princ "\n>> Skipped: This Sewer Pipe label has no ID prefix (starts directly with diameter). Click a Manhole or Drain ID!")
+             (princ "\n>> Skipped: This Pipe label has no ID prefix (starts directly with diameter). Click a label with an ID!")
              (progn
                ;; Save state for Undo before modifying
                (setq history (cons (list ent oldTxt currStr) history))
@@ -515,5 +571,5 @@
   (princ)
 )
 
-(princ "\nTSEQ v5.0 loaded. Type TSEQ to run.")
+(princ "\nTSEQ v6.0 loaded. Type TSEQ to run.")
 (princ)

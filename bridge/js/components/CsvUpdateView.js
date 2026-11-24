@@ -71,6 +71,19 @@ function CsvUpdateView({
               Lowest-IL Merged ({stats.mergedCount})
             </button>
           )}
+          {stats.qaWarningCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterCategory('QA_WARN')}
+              className={`px-2.5 py-1.5 rounded-lg font-semibold transition flex items-center space-x-1 ${
+                filterCategory === 'QA_WARN'
+                  ? 'bg-amber-500 text-black shadow'
+                  : 'bg-amber-950/70 text-amber-300 border border-amber-500/40 hover:bg-amber-900/60'
+              }`}
+            >
+              <span>⚠ QA/QC Warnings ({stats.qaWarningCount})</span>
+            </button>
+          )}
           {stats.shortCount > 0 && (
             <button
               type="button"
@@ -155,8 +168,17 @@ function CsvUpdateView({
             </tr>
           </thead>
           <tbody className="divide-y divide-cadslate-800/60 font-mono">
-            {filteredRows.map((row, idx) => (
-              <tr key={idx} className="hover:bg-cadslate-800/40 transition">
+            {filteredRows.map((row, idx) => {
+              const hasQaWarnings = row.qaWarnings && row.qaWarnings.length > 0;
+              return (
+              <tr
+                key={idx}
+                className={`transition ${
+                  hasQaWarnings
+                    ? 'bg-amber-950/20 hover:bg-amber-950/35 border-l-2 border-l-amber-400'
+                    : 'hover:bg-cadslate-800/40'
+                }`}
+              >
                 <td className="py-3 px-4 text-center text-slate-500 font-sans text-[11px]">
                   {idx + 1}
                 </td>
@@ -174,9 +196,22 @@ function CsvUpdateView({
                 </td>
 
                 <td className="py-3 px-4 font-bold text-white tracking-wide">
-                  <span className="bg-cadslate-950 px-2 py-1 rounded border border-cadslate-800 text-cadcyan-300">
-                    {row.id}
-                  </span>
+                  <div className="flex flex-col items-start gap-1">
+                    <span
+                      className={`px-2 py-1 rounded border ${
+                        hasQaWarnings
+                          ? 'bg-amber-950/60 border-amber-500/50 text-amber-300'
+                          : 'bg-cadslate-950 border-cadslate-800 text-cadcyan-300'
+                      }`}
+                    >
+                      {row.id}
+                    </span>
+                    {hasQaWarnings && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        ⚠ {row.qaWarnings.length} QA/QC {row.qaWarnings.length === 1 ? 'Flag' : 'Flags'}
+                      </span>
+                    )}
+                  </div>
                 </td>
 
                 <td className="py-3 px-4 font-sans text-xs">
@@ -201,6 +236,18 @@ function CsvUpdateView({
                   <div className={`text-[10px] italic mt-1 font-mono ${row.duplicateCount > 1 ? 'text-amber-400 font-semibold' : 'text-slate-400'}`}>
                     {row.conditionBadge}
                   </div>
+                  {hasQaWarnings && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {row.qaWarnings.map((warn, wIdx) => (
+                        <span
+                          key={wIdx}
+                          className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                        >
+                          ⚠ {warn}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </td>
 
                 <td className="py-3 px-4">
@@ -232,7 +279,8 @@ function CsvUpdateView({
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
 

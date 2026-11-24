@@ -56,13 +56,20 @@ function SewSectionView({
                   key={idx}
                   type="button"
                   onClick={() => setActiveSecIdx(idx)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition ${
-                    activeSecIdx === idx
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center space-x-1.5 ${activeSecIdx === idx
                       ? 'bg-cadcyan-500 text-black shadow-md'
-                      : 'bg-cadslate-950 text-slate-300 border border-cadslate-800 hover:border-cadcyan-500/40'
-                  }`}
+                      : sec.qaWarningCount > 0
+                        ? 'bg-amber-950/60 text-amber-300 border border-amber-500/50 hover:border-amber-400'
+                        : 'bg-cadslate-950 text-slate-300 border border-cadslate-800 hover:border-cadcyan-500/40'
+                    }`}
                 >
-                  Sec {sec.index}: {sec.nodes[0].id}→{sec.nodes[sec.nodes.length - 1].id} ({sec.totalLength.toFixed(0)}m)
+                  <span>Sec {sec.index}: {sec.nodes[0].id}→{sec.nodes[sec.nodes.length - 1].id} ({sec.totalLength.toFixed(0)}m)</span>
+                  {sec.qaWarningCount > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-sans font-bold ${activeSecIdx === idx ? 'bg-black/25 text-amber-200' : 'bg-amber-500/20 text-amber-300'
+                      }`}>
+                      ⚠ {sec.qaWarningCount}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -121,17 +128,44 @@ function SewSectionView({
                       const xNext = next ? xAt(next.dist) : null;
                       const yGlNext = next ? yAt(next.gl) : null;
                       const yIlNextIn = next ? yAt(next.ilIn) : null;
+                      const hasNodeWarn = node.qaWarnings && node.qaWarnings.length > 0;
+                      const hasSpanWarn = node.spanQaWarnings && node.spanQaWarnings.length > 0;
+                      const mhStroke = hasNodeWarn ? '#f59e0b' : '#f8fafc';
+                      const mhLabelFill = hasNodeWarn ? '#fbbf24' : '#ff00ff';
+                      const spanStroke = hasSpanWarn ? '#f59e0b' : '#ff00ff';
 
                       return (
                         <g key={i}>
-                          <line x1={x} y1={yDatum + 90} x2={x} y2="20" stroke="#f8fafc" strokeWidth="1" />
-                          <line x1={x - 2.5} y1={yIlOut} x2={x - 2.5} y2={yGl} stroke="#f8fafc" strokeWidth="1" />
-                          <line x1={x + 2.5} y1={yIlOut} x2={x + 2.5} y2={yGl} stroke="#f8fafc" strokeWidth="1" />
+                          {hasNodeWarn && (
+                            <title>{`${node.id} QA/QC: ${node.qaWarnings.join(' | ')}`}</title>
+                          )}
+                          <line x1={x} y1={yDatum + 90} x2={x} y2="20" stroke={mhStroke} strokeWidth={hasNodeWarn ? '1.6' : '1'} />
+                          {yIlOut > yGl && (
+                            <polygon
+                              points={`${x - 2.5},${yIlOut} ${x + 2.5},${yIlOut} ${x + 2.5},${yGl} ${x - 2.5},${yGl}`}
+                              fill="none"
+                              stroke={mhStroke}
+                              strokeWidth={hasNodeWarn ? '1.8' : '1.1'}
+                            />
+                          )}
+
+                          {hasNodeWarn && (
+                            <text
+                              x={x}
+                              y="14"
+                              fill="#fbbf24"
+                              fontSize="9"
+                              fontWeight="bold"
+                              textAnchor="middle"
+                            >
+                              ⚠
+                            </text>
+                          )}
 
                           <text
                             x={x - 4}
                             y="42"
-                            fill="#ff00ff"
+                            fill={mhLabelFill}
                             fontSize="9"
                             fontWeight="bold"
                             transform={`rotate(-90 ${x - 4} 42)`}
@@ -140,21 +174,36 @@ function SewSectionView({
                           </text>
 
                           {i > 0 && (node.ilIn - node.ilOut) > 0.01 && (
-                            <line x1={x} y1={yIlIn} x2={x} y2={yIlOut} stroke="#ff00ff" strokeWidth="1.8" />
+                            <line
+                              x1={x - 2.5}
+                              y1={yIlIn}
+                              x2={x - 2.5}
+                              y2={yIlOut}
+                              stroke={(node.ilIn - node.ilOut) >= 0.60 ? '#f59e0b' : '#ff00ff'}
+                              strokeWidth="2.2"
+                            />
                           )}
 
                           {next && (
                             <>
-                              <line x1={x} y1={yIlOut} x2={xNext} y2={yIlNextIn} stroke="#ff00ff" strokeWidth="1.6" />
-                              <line x1={x} y1={yGl} x2={xNext} y2={yGlNext} stroke="#facc15" strokeWidth="1.5" strokeDasharray="6,4" />
+                              <line
+                                x1={x + 2.5}
+                                y1={yIlOut}
+                                x2={xNext - 2.5}
+                                y2={yIlNextIn}
+                                stroke={spanStroke}
+                                strokeWidth={hasSpanWarn ? '2.6' : '1.6'}
+                              />
+                              <line x1={x + 2.5} y1={yGl} x2={xNext - 2.5} y2={yGlNext} stroke="#facc15" strokeWidth="1.5" strokeDasharray="6,4" />
                               <text
                                 x={(x + xNext) / 2}
                                 y={yDatum + 18}
-                                fill="#f8fafc"
+                                fill={hasSpanWarn ? '#fbbf24' : '#f8fafc'}
+                                fontWeight={hasSpanWarn ? 'bold' : 'normal'}
                                 fontSize="8"
                                 textAnchor="middle"
                               >
-                                {`${node.size}Ø ${node.mat} 1:${node.grad}`}
+                                {`${hasSpanWarn ? '⚠ ' : ''}${node.size}Ø ${node.mat} 1:${node.grad}`}
                               </text>
                             </>
                           )}
@@ -162,7 +211,7 @@ function SewSectionView({
                           <text
                             x={x + 8}
                             y={yDatum + 24}
-                            fill="#f8fafc"
+                            fill={hasNodeWarn ? '#fbbf24' : '#f8fafc'}
                             fontSize="7.5"
                             transform={`rotate(-90 ${x + 8} ${yDatum + 24})`}
                           >
@@ -212,6 +261,7 @@ function SewSectionView({
                         <th className="py-2.5 px-4">Depth (m)</th>
                         <th className="py-2.5 px-4">Backdrop (B/D IL)</th>
                         <th className="py-2.5 px-4">Outgoing Pipe Spec</th>
+                        <th className="py-2.5 px-4">QA/QC Checks</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-cadslate-800/60 font-mono">
@@ -219,17 +269,29 @@ function SewSectionView({
                         const isLast = nIdx === sec.nodes.length - 1;
                         const segLen = !isLast ? (sec.nodes[nIdx + 1].dist - n.dist) : null;
                         const hasBd = (n.ilIn - n.ilOut) > 0.005;
+                        const hasQa = n.qaWarnings && n.qaWarnings.length > 0;
                         return (
-                          <tr key={nIdx} className="hover:bg-cadslate-800/40 transition">
+                          <tr
+                            key={nIdx}
+                            className={`transition ${hasQa
+                                ? 'bg-amber-950/20 hover:bg-amber-950/35 border-l-2 border-l-amber-400'
+                                : 'hover:bg-cadslate-800/40'
+                              }`}
+                          >
                             <td className="py-2.5 px-4 text-slate-500">{nIdx + 1}</td>
-                            <td className="py-2.5 px-4 font-bold text-fuchsia-400">{n.id}</td>
+                            <td className={`py-2.5 px-4 font-bold ${hasQa ? 'text-amber-300' : 'text-fuchsia-400'}`}>
+                              {n.id}
+                            </td>
                             <td className="py-2.5 px-4 text-white font-semibold">{n.dist.toFixed(2)}m</td>
                             <td className="py-2.5 px-4 text-amber-300">{n.gl.toFixed(2)}m</td>
                             <td className="py-2.5 px-4 text-cadcyan-300 font-bold">{n.ilOut.toFixed(2)}m</td>
                             <td className="py-2.5 px-4 text-slate-300">{(n.gl - n.ilOut).toFixed(2)}m</td>
                             <td className="py-2.5 px-4">
                               {hasBd ? (
-                                <span className="px-2 py-0.5 rounded bg-fuchsia-950/50 text-fuchsia-300 border border-fuchsia-500/30 text-[11px]">
+                                <span className={`px-2 py-0.5 rounded text-[11px] ${(n.ilIn - n.ilOut) >= 0.60
+                                    ? 'bg-amber-950/60 text-amber-300 border border-amber-500/40'
+                                    : 'bg-fuchsia-950/50 text-fuchsia-300 border border-fuchsia-500/30'
+                                  }`}>
                                   B/D IL: {n.ilIn.toFixed(2)}m (Drop {(n.ilIn - n.ilOut).toFixed(2)}m)
                                 </span>
                               ) : (
@@ -238,11 +300,30 @@ function SewSectionView({
                             </td>
                             <td className="py-2.5 px-4">
                               {!isLast ? (
-                                <span className="text-white bg-cadslate-950 px-2.5 py-1 rounded border border-cadslate-800">
+                                <span className={`px-2.5 py-1 rounded border ${n.spanQaWarnings && n.spanQaWarnings.length > 0
+                                    ? 'text-amber-300 bg-amber-950/50 border-amber-500/40'
+                                    : 'text-white bg-cadslate-950 border-cadslate-800'
+                                  }`}>
                                   {n.size}Ø {n.mat} 1:{n.grad} ({segLen.toFixed(2)}m)
                                 </span>
                               ) : (
                                 <span className="text-slate-500 italic">End of Section ({sec.totalLength.toFixed(2)}m)</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4 font-sans">
+                              {hasQa ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {n.qaWarnings.map((w, wIdx) => (
+                                    <span
+                                      key={wIdx}
+                                      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                    >
+                                      ⚠ {w}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-emerald-400 text-[11px] font-semibold">✓ Pass</span>
                               )}
                             </td>
                           </tr>

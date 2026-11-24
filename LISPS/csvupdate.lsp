@@ -2,12 +2,13 @@
 
 (defun c:csvupdate ( / *error* oldCmd oldDimZin
                        errBoxSize errBoxWidth errBoxColor dupBoxColor zoomHeight
-                       split-csv normalize-id split-mtext
+                       split-csv normalize-id split-mtext join-str-list
                        get-text put-text is-sewer-mh-p pick-target-text get-box-center draw-qa-box
                        filename file line cols id searchId val1 val2 val3 category csvMode
-                       dict csvDupIds refEnt refLayer layerFlags ss count i ent elist entType entLayer
+                       dict csvDupIds totalCsvRows csvIdList matchedCsvIds unmatchedCsvIds csvEntry
+                       refEnt refLayer layerFlags ss count i ent elist entType entLayer
                        oldTxt parsed stylePrefix displayId delimChar closeBraces cleanId match
-                       cadIdCounts existingCnt isCadDup isCsvDup dupCount dupIdNames
+                       cadIdCounts existingCnt isCadDup isCsvDup dupCount dupIdNames cadDupIdNames
                        updated missing skipped dataList glStr ilStr dStr
                        szStr lenStr gradStr lenNum newTxt pt hgt boxRad errorPt dupPt zoomTarget)
 
@@ -254,7 +255,20 @@
     picked
   )
 
-  (princ "\nCommand: CSVUPDATE v3.2 (Red Missing Box + Blue Duplicate Box Edition)")
+  (defun join-str-list (lst sep / out)
+    (if (null lst)
+      ""
+      (progn
+        (setq out (car lst))
+        (foreach item (cdr lst)
+          (setq out (strcat out sep item))
+        )
+        out
+      )
+    )
+  )
+
+  (princ "\nCommand: CSVUPDATE v3.3 (QA/QC Audit Report + Red/Blue Box Edition)")
   (setvar "CMDECHO" 0)
 
   ;; =========================================================================
@@ -271,7 +285,7 @@
     )
   )
 
-  (setq dict nil csvDupIds nil csvMode "DRAINAGE")
+  (setq dict nil csvDupIds nil csvIdList nil totalCsvRows 0 csvMode "DRAINAGE")
   (while (setq line (read-line file))
     (if (/= (vl-string-trim " \t\r\n" line) "")
       (progn
@@ -287,11 +301,13 @@
            (setq searchId (normalize-id id))
            (if (and (/= searchId "") (/= (strcase id) "ID"))
              (progn
+               (setq totalCsvRows (1+ totalCsvRows))
                ;; Check if this ID already exists in the CSV file
                (if (assoc searchId dict)
                  (if (not (member searchId csvDupIds))
                    (setq csvDupIds (cons searchId csvDupIds))
                  )
+                 (setq csvIdList (cons (cons searchId (strcase id)) csvIdList))
                )
                (setq dict (cons (cons searchId (list val1 val2 val3 category)) dict))
              )
@@ -302,10 +318,12 @@
            (setq searchId (normalize-id id))
            (if (and (/= searchId "") (/= (strcase id) "ID"))
              (progn
+               (setq totalCsvRows (1+ totalCsvRows))
                (if (assoc searchId dict)
                  (if (not (member searchId csvDupIds))
                    (setq csvDupIds (cons searchId csvDupIds))
                  )
+                 (setq csvIdList (cons (cons searchId (strcase id)) csvIdList))
                )
                (setq dict (cons (cons searchId (list val1 "" "" "RAW2COL")) dict))
              )
@@ -316,6 +334,7 @@
   )
   (close file)
   (setq file nil)
+  (setq csvIdList (reverse csvIdList))
 
   (if (not dict)
     (progn (alert "Error: No valid data found in CSV.") (exit))
@@ -372,7 +391,9 @@
       )
 
       ;; PASS 2: Inject CSV Data & Draw Red (Missing) / Blue (Duplicate) Boxes
-      (setq i 0 updated 0 missing 0 dupCount 0 skipped 0 dupIdNames nil errorPt nil dupPt nil)
+      (setq i 0 updated 0 missing 0 dupCount 0 skipped 0
+            dupIdNames nil cadDupIdNames nil matchedCsvIds nil unmatchedCsvIds nil
+            errorPt nil dupPt nil)
       (setvar "DIMZIN" 0)
 
       (while (< i count)
@@ -403,6 +424,12 @@
                 (setq isCadDup (and (/= cleanId "") (> (cdr (assoc cleanId cadIdCounts)) 1)))
                 (setq isCsvDup (and (/= cleanId "") (member cleanId csvDupIds)))
 
+                (if isCadDup
+                  (if (not (member (strcase displayId) cadDupIdNames))
+                    (setq cadDupIdNames (cons (strcase displayId) cadDupIdNames))
+                  )
+                )
+
                 (if (or isCadDup isCsvDup)
                   (progn
                     ;; Draw Thick BLUE Box (slightly larger radius so it never overlaps a Red box)
@@ -418,6 +445,9 @@
                 ;; Check if ID exists in CSV
                 (if match
                   (progn
+                    (if (not (member cleanId matchedCsvIds))
+                      (setq matchedCsvIds (cons cleanId matchedCsvIds))
+                    )
                     (setq dataList (cdr match)
                           val1     (nth 0 dataList)
                           val2     (nth 1 dataList)
@@ -466,21 +496,66 @@
         (setq i (1+ i))
       )
 
+      ;; Compare CSV ID list against matched CAD IDs to find CSV IDs missing in CAD
+      (foreach csvEntry csvIdList
+        (if (not (member (car csvEntry) matchedCsvIds))
+          (setq unmatchedCsvIds (cons (cdr csvEntry) unmatchedCsvIds))
+        )
+      )
+      (setq unmatchedCsvIds (reverse unmatchedCsvIds)
+            cadDupIdNames   (reverse cadDupIdNames)
+            dupIdNames      (reverse dupIdNames))
+
+      ;; Print Full QA/QC Audit Report in AutoCAD Command Line
+      (princ "\n================================================================")
+      (princ "\n          CSVUPDATE v3.3 — QA/QC ENGINEERING AUDIT REPORT       ")
+      (princ "\n================================================================")
+      (princ (strcat "\n  Target CAD Layer            : " refLayer))
+      (princ (strcat "\n  Discipline Mode             : " csvMode))
+      (princ "\n----------------------------------------------------------------")
+      (princ "\n  1. TOTAL CSV ROWS VS. TOTAL MATCHED IN CAD")
+      (princ (strcat "\n     - Total CSV Rows Loaded  : " (itoa totalCsvRows) " (" (itoa (length csvIdList)) " unique CSV IDs)"))
+      (princ (strcat "\n     - Total Matched in CAD   : " (itoa (length matchedCsvIds)) " unique CSV IDs (" (itoa updated) " CAD texts updated)"))
+      (princ (strcat "\n     - CSV IDs Not in CAD     : " (itoa (length unmatchedCsvIds))))
+      (princ (strcat "\n     - CAD Texts Not in CSV   : " (itoa missing) " [Flagged with RED Box]"))
+      (princ (strcat "\n     - Duplicate CAD Texts    : " (itoa dupCount) " [Flagged with BLUE Box]"))
+      (princ "\n----------------------------------------------------------------")
+      (princ "\n  2. CSV IDs NOT FOUND ANYWHERE IN CAD SELECTION:")
+      (if unmatchedCsvIds
+        (princ (strcat "\n     " (join-str-list unmatchedCsvIds ", ")))
+        (princ "\n     None (All CSV IDs were found in CAD)")
+      )
+      (princ "\n----------------------------------------------------------------")
+      (princ "\n  3. DUPLICATE IDs FOUND IN CAD:")
+      (if cadDupIdNames
+        (princ (strcat "\n     " (join-str-list cadDupIdNames ", ")))
+        (if dupIdNames
+          (princ (strcat "\n     " (join-str-list dupIdNames ", ")))
+          (princ "\n     None (No duplicate IDs found in CAD)")
+        )
+      )
+      (princ "\n================================================================\n")
+
       ;; Choose zoom target (prioritize Missing Red Box, then Duplicate Blue Box)
       (setq zoomTarget (if errorPt errorPt dupPt))
 
-      (alert (strcat "CSV DATA INJECTION COMPLETE (v3.2)\n\n"
+      (alert (strcat "CSV DATA INJECTION COMPLETE (v3.3)\n\n"
                      "Target Layer: " refLayer "\n"
                      "Mode: " csvMode "\n\n"
-                     "Texts Updated: " (itoa updated) "\n"
-                     "Missing from CSV (RED Box): " (itoa missing) "\n"
-                     "Duplicate IDs Found (BLUE Box): " (itoa dupCount)
-                     (if dupIdNames
-                       (strcat "\nDuplicate ID List: "
-                               (apply 'strcat (mapcar '(lambda (x) (strcat x " ")) (reverse dupIdNames))))
-                       "")
-                     (if (> skipped 0) (strcat "\nNon-Manhole Texts Skipped: " (itoa skipped)) "")
-                     (if zoomTarget "\n\nClick OK to jump directly to the first flagged box." "")))
+                     "1. Total CSV Rows vs. Matched in CAD:\n"
+                     "   - CSV Rows Loaded: " (itoa totalCsvRows) " (" (itoa (length csvIdList)) " unique IDs)\n"
+                     "   - Matched in CAD: " (itoa (length matchedCsvIds)) " unique IDs (" (itoa updated) " texts updated)\n"
+                     "   - Missing from CSV (RED Box): " (itoa missing) "\n"
+                     "   - Duplicate IDs Found (BLUE Box): " (itoa dupCount) "\n\n"
+                     "2. CSV IDs NOT Found in CAD (" (itoa (length unmatchedCsvIds)) "):\n   "
+                     (if unmatchedCsvIds (join-str-list unmatchedCsvIds ", ") "None") "\n\n"
+                     "3. Duplicate IDs Found in CAD:\n   "
+                     (if cadDupIdNames
+                       (join-str-list cadDupIdNames ", ")
+                       (if dupIdNames (join-str-list dupIdNames ", ") "None"))
+                     (if (> skipped 0) (strcat "\n\nNon-Manhole Texts Skipped: " (itoa skipped)) "")
+                     "\n\n(Full QA/QC Audit Report printed to Command Line - Press F2 to view)"
+                     (if zoomTarget "\nClick OK to jump directly to the first flagged box." "")))
 
       (if zoomTarget
         (command "_.ZOOM" "_C" (trans zoomTarget 0 1) zoomHeight)
