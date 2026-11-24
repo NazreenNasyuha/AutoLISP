@@ -84,8 +84,8 @@
       (progn
         (setq tmpDir (cond ((getenv "TEMP")) ((getenv "TMP")) ((getvar "TEMPPREFIX")) (".")))
         (if (member (substr tmpDir (strlen tmpDir) 1) '("\\" "/"))
-          (strcat tmpDir "tbox.dcl")
-          (strcat tmpDir "\\tbox.dcl")
+          (strcat tmpDir "tbox_" (itoa (getvar "MILLISECS")) ".dcl")
+          (strcat tmpDir "\\tbox_" (itoa (getvar "MILLISECS")) ".dcl")
         )
       )
     )

@@ -12,6 +12,7 @@ function Footer({
   exportSewSectionCSV,
   exportMtextCSV,
   exportCSV,
+  exportQaReport,
 }) {
   return (
     <footer className="border-t border-cadslate-800 bg-cadslate-900/95 backdrop-blur p-4 sticky bottom-0 z-40 transition-colors">
@@ -30,6 +31,16 @@ function Footer({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+          {(processedRows.length > 0 || sewSections.length > 0) && exportQaReport && (
+            <button
+              type="button"
+              onClick={exportQaReport}
+              className="inline-flex items-center justify-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-amber-500/40 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 transition"
+              title="Download Civil & Hydraulic QA/QC Audit Report CSV"
+            >
+              <span>⚠ Export QA/QC Audit (.CSV)</span>
+            </button>
+          )}
           {targetTool === 'SEWSECTION' ? (
             <>
               <button

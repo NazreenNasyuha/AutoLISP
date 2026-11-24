@@ -18,6 +18,7 @@
 
   (defun *error* (msg)
     (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
+    (setq *r180_min* nil *r180_max* nil)
     (if oldOs  (setvar "OSMODE" oldOs))
     (if oldCmd (setvar "CMDECHO" oldCmd))
     (if (and msg (not (wcmatch (strcase msg) "*CANCEL*,*QUIT*,*EXIT*")))
@@ -29,7 +30,7 @@
   ;; -------------------------------------------------------------------------
   ;; 1. ACTIVEX BOUNDING BOX EXTRACTOR (Returns (list pMinWcs pMaxWcs) or nil)
   ;;    Uses global symbols *r180_min* / *r180_max* to prevent AutoCAD local
-  ;;    safearray scoping bugs inside vl-catch-all-apply.
+  ;;    safearray scoping bugs inside vl-catch-all-apply, clearing immediately.
   ;; -------------------------------------------------------------------------
   (defun get-vla-bbox (ent / obj ok pMin pMax)
     (setq *r180_min* nil *r180_max* nil ok nil)
@@ -42,12 +43,16 @@
           (progn
             (setq pMin (vl-catch-all-apply 'vlax-safearray->list (list *r180_min*))
                   pMax (vl-catch-all-apply 'vlax-safearray->list (list *r180_max*)))
+            (setq *r180_min* nil *r180_max* nil)
             (if (and (listp pMin) (listp pMax))
               (list pMin pMax)
               nil
             )
           )
-          nil
+          (progn
+            (setq *r180_min* nil *r180_max* nil)
+            nil
+          )
         )
       )
       nil

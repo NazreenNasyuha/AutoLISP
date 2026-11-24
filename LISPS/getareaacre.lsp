@@ -40,72 +40,197 @@
 ;;;  - decimals : Precision decimal places for acre formatting (default: 4).
 ;;; ==========================================================================
 
-(defun c:getareaacre ( / *error* txtHgt decimals ss ent rawArea acreArea outText center oldCmd get-poly-center )
-  
+(vl-load-com)
+
+(defun c:getareaacre ( / *error* txtHgt decimals ss ent rawArea acreArea outText center
+                         oldCmd oldDimZin undoStarted fmt-dec copy-clip get-poly-center )
+
   ;; =========================================================================
   ;; 1. USER SETTINGS & CONFIGURATION
   ;; =========================================================================
   (setq txtHgt 1500.0) ;; Height of the injected area text
   (setq decimals 4)    ;; Decimal places for the final number
   ;; =========================================================================
-  
+
   ;; =========================================================================
   ;; 2. ERROR HANDLING & SYSTEM SETUP
   ;; =========================================================================
-  (setq oldCmd (getvar "CMDECHO"))
+  (setq oldCmd    (getvar "CMDECHO")
+        oldDimZin (getvar "DIMZIN")
+  )
+  (setvar "CMDECHO" 0)
+  (setvar "DIMZIN" 0)
+
   (defun *error* (msg)
-    (if oldCmd (setvar "CMDECHO" oldCmd))
+    (if undoStarted (progn (command "_.UNDO" "_End") (setq undoStarted nil)))
+    (if oldCmd    (setvar "CMDECHO" oldCmd))
+    (if oldDimZin (setvar "DIMZIN" oldDimZin))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
-      (princ (strcat "\nError: " msg)))
+      (princ (strcat "\n[GETAREAACRE] Error: " msg)))
     (princ)
   )
 
   ;; =========================================================================
-  ;; 3. GEOMETRIC CENTROID CALCULATION
+  ;; 3. ZERO-PADDED FORMATTER, CLIPBOARD & TRUE SHOELACE CENTROID IN WCS
   ;; =========================================================================
-  ;; Helper to calculate the vertex centroid of the polyline
-  (defun get-poly-center (e / elist sumX sumY count)
-    (setq elist (entget e) sumX 0.0 sumY 0.0 count 0)
-    (foreach item elist 
-      (if (= (car item) 10) 
-        (setq sumX (+ sumX (cadr item)) sumY (+ sumY (caddr item)) count (1+ count))
+  (defun fmt-dec (val dec / s dotPos fracLen)
+    (if (fboundp 'jrk:fmt-dec)
+      (jrk:fmt-dec val dec)
+      (progn
+        (setq s (rtos val 2 dec)
+              dotPos (vl-string-search "." s)
+        )
+        (if (null dotPos)
+          (progn
+            (setq s (strcat s "."))
+            (repeat dec (setq s (strcat s "0")))
+          )
+          (progn
+            (setq fracLen (- (strlen s) dotPos 1))
+            (while (< fracLen dec)
+              (setq s (strcat s "0") fracLen (1+ fracLen))
+            )
+          )
+        )
+        s
       )
     )
-    (if (> count 0) (list (/ sumX count) (/ sumY count) 0.0) nil)
+  )
+
+  (defun copy-clip (txt / html pw clip ok tmp fh wsh cmd)
+    (if (fboundp 'jrk:copy-clip)
+      (jrk:copy-clip txt)
+      (progn
+        (setq ok nil)
+        (setq html (vl-catch-all-apply 'vlax-create-object (list "htmlfile")))
+        (if (and html (not (vl-catch-all-error-p html)))
+          (progn
+            (setq pw (vl-catch-all-apply 'vlax-get (list html 'ParentWindow)))
+            (if (and pw (not (vl-catch-all-error-p pw)))
+              (progn
+                (setq clip (vl-catch-all-apply 'vlax-get (list pw 'ClipboardData)))
+                (if (and clip (not (vl-catch-all-error-p clip)))
+                  (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list clip 'setData "Text" txt))))
+                    (setq ok T)
+                  )
+                )
+              )
+            )
+            (vl-catch-all-apply 'vlax-release-object (list html))
+          )
+        )
+        (if (not ok)
+          (progn
+            (setq tmp (vl-filename-mktemp "jrk_clip_" (getenv "TEMP") ".txt"))
+            (if (and tmp (setq fh (open tmp "w")))
+              (progn
+                (princ txt fh)
+                (close fh)
+                (setq cmd (strcat "cmd.exe /c clip < \"" tmp "\""))
+                (setq wsh (vl-catch-all-apply 'vlax-create-object (list "WScript.Shell")))
+                (if (and wsh (not (vl-catch-all-error-p wsh)))
+                  (progn
+                    (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))
+                    (vl-catch-all-apply 'vlax-release-object (list wsh))
+                    (setq ok T)
+                  )
+                )
+                (vl-catch-all-apply 'vl-file-delete (list tmp))
+              )
+            )
+          )
+        )
+        ok
+      )
+    )
+  )
+
+  (defun get-poly-center (e / elist pts elev n k p1 p2 cross areaSum cxSum cySum cx cy)
+    (if (fboundp 'jrk:get-poly-centroid-wcs)
+      (jrk:get-poly-centroid-wcs e)
+      (progn
+        (setq elist (entget e)
+              pts   nil
+              elev  (if (assoc 38 elist) (cdr (assoc 38 elist)) 0.0)
+        )
+        (foreach item elist
+          (if (= (car item) 10)
+            (setq pts (cons (cdr item) pts))
+          )
+        )
+        (setq pts (reverse pts)
+              n   (length pts)
+        )
+        (if (>= n 3)
+          (progn
+            (setq areaSum 0.0 cxSum 0.0 cySum 0.0 k 0)
+            (while (< k n)
+              (setq p1 (nth k pts)
+                    p2 (nth (rem (1+ k) n) pts)
+                    cross (- (* (car p1) (cadr p2)) (* (car p2) (cadr p1)))
+                    areaSum (+ areaSum cross)
+                    cxSum (+ cxSum (* (+ (car p1) (car p2)) cross))
+                    cySum (+ cySum (* (+ (cadr p1) (cadr p2)) cross))
+                    k (1+ k)
+              )
+            )
+            (if (> (abs areaSum) 1e-8)
+              (setq cx (/ cxSum (* 3.0 areaSum))
+                    cy (/ cySum (* 3.0 areaSum))
+              )
+              (setq cx (/ (apply '+ (mapcar 'car pts)) (float n))
+                    cy (/ (apply '+ (mapcar 'cadr pts)) (float n))
+              )
+            )
+            (trans (list cx cy elev) e 0)
+          )
+          (if (> n 0)
+            (trans (list (caar pts) (cadar pts) elev) e 0)
+            nil
+          )
+        )
+      )
+    )
   )
 
   ;; =========================================================================
   ;; 4. BOUNDARY SELECTION & EXECUTION ENGINE
   ;; =========================================================================
-  (if (setq ss (ssget '((0 . "LWPOLYLINE,POLYLINE"))))
+  (if (setq ss (ssget "_:S" '((0 . "LWPOLYLINE,POLYLINE"))))
     (progn
+      (command "_.UNDO" "_Begin")
+      (setq undoStarted T)
       (setq ent (ssname ss 0))
-      
-      (setvar "CMDECHO" 0) 
-      (command "_.AREA" "_O" ent) 
-      (if oldCmd (setvar "CMDECHO" oldCmd))
-      
+
+      (command "_.AREA" "_O" ent)
       (setq rawArea (getvar "AREA"))
       (setq acreArea (/ rawArea 4046856422.4))
-      (setq outText (rtos acreArea 2 decimals))
-      
-      ;; Find centroid and inject middle-centered text
+      (setq outText (fmt-dec acreArea decimals))
+
+      ;; Find true WCS centroid and inject middle-centered text
       (setq center (get-poly-center ent))
       (if center
         (entmake (list '(0 . "TEXT")
-                       (cons 1 (strcat outText " ac")) 
-                       (list 10 (car center) (cadr center) 0.0) 
-                       (list 11 (car center) (cadr center) 0.0) 
+                       (cons 1 (strcat outText " ac"))
+                       (list 10 (car center) (cadr center) (caddr center))
+                       (list 11 (car center) (cadr center) (caddr center))
                        (cons 40 txtHgt)
                        '(72 . 1)
                        '(73 . 2)))
       )
-      
-      ;; Pipe result to Windows Clipboard
-      (startapp (strcat "cmd.exe /c echo | set /p=" outText "| clip"))
-      (princ (strcat "\n>> Area: " outText " Acres (Copied to Clipboard!)"))
+
+      (command "_.UNDO" "_End")
+      (setq undoStarted nil)
+
+      ;; Pipe result safely to Windows Clipboard
+      (if (copy-clip outText)
+        (princ (strcat "\n>> Area: " outText " Acres (Copied to Clipboard!)"))
+        (princ (strcat "\n>> Area: " outText " Acres (clipboard unavailable)"))
+      )
     )
     (princ "\nNo polyline selected.")
   )
+  (if oldCmd    (setvar "CMDECHO" oldCmd))
+  (if oldDimZin (setvar "DIMZIN" oldDimZin))
   (princ)
 )

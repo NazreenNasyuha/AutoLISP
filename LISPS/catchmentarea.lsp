@@ -47,7 +47,7 @@
 ;;;  - txtHgt    : Text height for the generated area annotations (mm).
 ;;; ==========================================================================
 
-(defun c:catchmentarea ( / *error* layerName col txtHgt oldOsnap oldCmd
+(defun c:catchmentarea ( / *error* layerName col txtHgt oldOsnap oldCmd oldDimZin oldLayer undoStarted
                            iPt1 iPt2 iPt3 iPt4 oPt1 oPt2 oPt3 oPt4 rPtUser1 rPtUser2 rPt1 rPt2
                            iList oList oSorted iSorted i0 i1 i2 i3 o0 o1 o2 o3 r0 r1 r2 r3 axisA axisB
                            sort-ccw align-lists get-closest make-poly midpt project-pt )
@@ -64,20 +64,31 @@
   ;; =========================================================================
   ;; 2. ERROR HANDLING & ENVIRONMENT SAFEGUARDS
   ;; =========================================================================
-  (setq oldOsnap (getvar "OSMODE")
-        oldCmd   (getvar "CMDECHO"))
+  (setq oldOsnap  (getvar "OSMODE")
+        oldCmd    (getvar "CMDECHO")
+        oldDimZin (getvar "DIMZIN")
+        oldLayer  (getvar "CLAYER"))
+  (setvar "DIMZIN" 0)
 
   (defun *error* (msg)
-    (if oldOsnap (setvar "OSMODE" oldOsnap))
-    (if oldCmd   (setvar "CMDECHO" oldCmd))
+    (if undoStarted (progn (command "_.UNDO" "_End") (setq undoStarted nil)))
+    (if oldOsnap  (setvar "OSMODE" oldOsnap))
+    (if oldCmd    (setvar "CMDECHO" oldCmd))
+    (if oldDimZin (setvar "DIMZIN" oldDimZin))
+    (if oldLayer  (setvar "CLAYER" oldLayer))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
       (princ (strcat "\n[CATCHMENTAREA] Action Cancelled: " msg)))
     (princ)
   )
 
-  ;; Ensure Target Layer Exists
+  ;; Ensure Target Layer Exists without mutating current active layer
   (if (not (tblsearch "LAYER" layerName))
-    (command "_.LAYER" "_M" layerName "_C" col "" ""))
+    (progn
+      (setvar "CMDECHO" 0)
+      (command "_.LAYER" "_N" layerName "_C" col layerName "")
+      (setvar "CMDECHO" oldCmd)
+    )
+  )
 
   ;; =========================================================================
   ;; 3. USER INTERFACE & GEOMETRIC INPUT PROMPTS
@@ -224,11 +235,15 @@
                     r2 (get-closest i2 rPt1 rPt2)
                     r3 (get-closest i3 rPt1 rPt2))
 
-              ;; Construct the 4 boundary quadrants
+              ;; Construct the 4 boundary quadrants inside an atomic Undo Group
+              (command "_.UNDO" "_Begin")
+              (setq undoStarted T)
               (make-poly (list o0 o1 i1 r1 r0 i0))
               (make-poly (list o1 o2 i2 r2 r1 i1))
               (make-poly (list o2 o3 i3 r3 r2 i2))
               (make-poly (list o3 o0 i0 r0 r3 i3))
+              (command "_.UNDO" "_End")
+              (setq undoStarted nil)
 
               (princ "\n>> Success! 4 Catchment quadrants drawn and labeled.")
             )
@@ -239,7 +254,9 @@
   )
 
   ;; Restore system variables
-  (if oldOsnap (setvar "OSMODE" oldOsnap))
-  (if oldCmd   (setvar "CMDECHO" oldCmd))
+  (if oldOsnap  (setvar "OSMODE" oldOsnap))
+  (if oldCmd    (setvar "CMDECHO" oldCmd))
+  (if oldDimZin (setvar "DIMZIN" oldDimZin))
+  (if oldLayer  (setvar "CLAYER" oldLayer))
   (princ)
 )

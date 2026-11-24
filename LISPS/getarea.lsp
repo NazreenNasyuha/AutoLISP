@@ -42,8 +42,10 @@
 ;;;  - unitsPerM : Drawing units per metre (default 1000.0 = drawing in mm).
 ;;; ==========================================================================
 
+(vl-load-com)
+
 (defun c:getarea ( / *error* sysVars sysVals decimals unitsPerM ss ent
-                     rawArea sqm haArea acreArea outText rawLabel copy-clip )
+                     rawArea sqm haArea acreArea outText rawLabel fmt-dec copy-clip )
 
   ;; =========================================================================
   ;; 1. USER SETTINGS & CONFIGURATION
@@ -55,8 +57,10 @@
   ;; =========================================================================
   ;; 2. ERROR HANDLING & SYSTEM VARIABLE RESTORATION
   ;; =========================================================================
-  (setq sysVars '("CMDECHO")
+  (setq sysVars '("CMDECHO" "DIMZIN")
         sysVals (mapcar 'getvar sysVars))
+  (setvar "CMDECHO" 0)
+  (setvar "DIMZIN" 0)
 
   (defun *error* (msg)
     (repeat 3 (if (> (getvar "CMDACTIVE") 0) (command)))
@@ -67,18 +71,81 @@
   )
 
   ;; =========================================================================
-  ;; 3. WINDOWS CLIPBOARD INTEGRATION
+  ;; 3. ZERO-PADDED FORMATTER (Rule #4) & HARDENED CLIPBOARD INTEGRATION
   ;; =========================================================================
-  ;; Copies string to the OS clipboard via temporary text file (100% LT / GstarCAD safe)
-  (defun copy-clip (txt / path fh)
-    (setq path (strcat (cond ((getenv "TEMP")) ((getenv "TMP")) ("C:\\Temp")) "\\acad_clip.txt"))
-    (if (and (boundp 'startapp) (setq fh (open path "w")))
+  (defun fmt-dec (val dec / s dotPos fracLen)
+    (if (fboundp 'jrk:fmt-dec)
+      (jrk:fmt-dec val dec)
       (progn
-        (princ txt fh)
-        (close fh)
-        (startapp (strcat "cmd.exe /c clip < \"" path "\""))
-        T)
-      nil)
+        (setq s (rtos val 2 dec))
+        (if (> dec 0)
+          (progn
+            (setq dotPos (vl-string-search "." s))
+            (if (null dotPos)
+              (progn
+                (setq s (strcat s "."))
+                (repeat dec (setq s (strcat s "0")))
+              )
+              (progn
+                (setq fracLen (- (strlen s) dotPos 1))
+                (while (< fracLen dec)
+                  (setq s (strcat s "0") fracLen (1+ fracLen))
+                )
+              )
+            )
+          )
+        )
+        s
+      )
+    )
+  )
+
+  (defun copy-clip (txt / html pw clip ok tmp fh wsh cmd)
+    (if (fboundp 'jrk:copy-clip)
+      (jrk:copy-clip txt)
+      (progn
+        (setq ok nil)
+        (setq html (vl-catch-all-apply 'vlax-create-object (list "htmlfile")))
+        (if (and html (not (vl-catch-all-error-p html)))
+          (progn
+            (setq pw (vl-catch-all-apply 'vlax-get (list html 'ParentWindow)))
+            (if (and pw (not (vl-catch-all-error-p pw)))
+              (progn
+                (setq clip (vl-catch-all-apply 'vlax-get (list pw 'ClipboardData)))
+                (if (and clip (not (vl-catch-all-error-p clip)))
+                  (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list clip 'setData "Text" txt))))
+                    (setq ok T)
+                  )
+                )
+              )
+            )
+            (vl-catch-all-apply 'vlax-release-object (list html))
+          )
+        )
+        (if (not ok)
+          (progn
+            (setq tmp (vl-filename-mktemp "jrk_clip_" (getenv "TEMP") ".txt"))
+            (if (and tmp (setq fh (open tmp "w")))
+              (progn
+                (princ txt fh)
+                (close fh)
+                (setq cmd (strcat "cmd.exe /c clip < \"" tmp "\""))
+                (setq wsh (vl-catch-all-apply 'vlax-create-object (list "WScript.Shell")))
+                (if (and wsh (not (vl-catch-all-error-p wsh)))
+                  (progn
+                    (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))
+                    (vl-catch-all-apply 'vlax-release-object (list wsh))
+                    (setq ok T)
+                  )
+                )
+                (vl-catch-all-apply 'vl-file-delete (list tmp))
+              )
+            )
+          )
+        )
+        ok
+      )
+    )
   )
 
   ;; =========================================================================
@@ -89,7 +156,6 @@
   (if (setq ss (ssget "_:S" '((0 . "LWPOLYLINE,POLYLINE"))))
     (progn
       (setq ent (ssname ss 0))
-      (setvar "CMDECHO" 0)
       (command "_.AREA" "_O" ent)
       (setq rawArea (getvar "AREA"))
 
@@ -100,10 +166,10 @@
             rawLabel (if (equal unitsPerM 1000.0 1e-9) " mm2 / " " du2 / "))
 
       ;; Build clean formatted output string
-      (setq outText (strcat (rtos rawArea 2 2) rawLabel
-                            (rtos sqm 2 decimals) " m2 / "
-                            (rtos haArea 2 decimals) " ha / "
-                            (rtos acreArea 2 decimals) " ac"))
+      (setq outText (strcat (fmt-dec rawArea 2) rawLabel
+                            (fmt-dec sqm decimals) " m2 / "
+                            (fmt-dec haArea decimals) " ha / "
+                            (fmt-dec acreArea decimals) " ac"))
 
       ;; Copy to Windows clipboard and display to user
       (if (copy-clip outText)

@@ -13,6 +13,7 @@ function CsvUpdateView({
   setSearchTerm,
   copyEntireCSV,
   copySingleString,
+  exportQaReport,
 }) {
   if (targetTool !== 'CSVUPDATE' || !processedRows || processedRows.length === 0) return null;
 
@@ -220,6 +221,11 @@ function CsvUpdateView({
                       <div><span className="text-slate-500">GL:</span> {row.sewerDetails.gl || '—'}m</div>
                       <div><span className="text-slate-500">Lowest IL:</span> <strong className="text-cadcyan-400">{row.sewerDetails.il || '—'}m</strong></div>
                       <div><span className="text-slate-500">Depth:</span> {row.sewerDetails.depth || '—'}m</div>
+                      {row.hydraulics && (
+                        <div className="text-[11px] text-emerald-300 font-mono">
+                          V={row.hydraulics.velocityMs.toFixed(2)}m/s • Q={row.hydraulics.capacityLs.toFixed(1)}L/s
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-0.5 text-slate-300">
@@ -231,6 +237,11 @@ function CsvUpdateView({
                           <span className="ml-2 text-[11px] text-cadcyan-400">(Min IL: {row.drainDetails.il}m)</span>
                         )}
                       </div>
+                      {row.hydraulics && (
+                        <div className="text-[11px] text-cadcyan-300 font-mono">
+                          V={row.hydraulics.velocityMs.toFixed(2)}m/s • Q={row.hydraulics.capacityLs.toFixed(1)}L/s
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className={`text-[10px] italic mt-1 font-mono ${row.duplicateCount > 1 ? 'text-amber-400 font-semibold' : 'text-slate-400'}`}>

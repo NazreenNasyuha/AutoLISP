@@ -14,7 +14,7 @@
 (defun c:REPSIM ( / *error* oldCmd
                     ;; --- helper functions ---
                     rs:cleanup rs:tmpName rs:writeDCL
-                    get-text put-text split-mtext-style
+                    esc-filter get-text put-text split-mtext-style
                     extract-style set-dxf rem-dxf apply-style-to-ent color-name
                     pick-object run-dialog ask-cmdline
                     ;; --- target & donor variables ---
@@ -61,82 +61,170 @@
   )
 
   ;; =========================================================================
-  ;; 2. UNIVERSAL TEXT READER, WRITER & MTEXT INLINE STYLE PARSER
+  ;; 2. UNIVERSAL 3-LAYER TEXT READER, WRITER & MTEXT INLINE STYLE PARSER
   ;; =========================================================================
-  (defun get-text (ent / elist typ obj res item)
-    (setq elist (entget ent) typ (cdr (assoc 0 elist)) res nil)
-    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
-    (if (and obj (not (vl-catch-all-error-p obj)))
-      (setq res (vl-catch-all-apply 'vlax-get-property (list obj 'TextString)))
-    )
-    (if (or (null res) (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
-      (cond
-        ((= typ "MULTILEADER")
-         (setq res "")
-         (foreach item elist
-           (if (and (= (car item) 304)
-                    (/= (strcase (cdr item)) "LEADER_LINE{")
-                    (= res ""))
-             (setq res (cdr item))
-           )
-         ))
-        ((= typ "MTEXT")
-         (setq res "")
-         (foreach item elist
-           (if (or (= (car item) 3) (= (car item) 1))
-             (setq res (strcat res (cdr item)))
-           )
-         ))
-        (T
-         (setq res (cdr (assoc 1 elist))))
+  (defun esc-filter (str / idx ch out)
+    (if (fboundp 'jrk:esc-filter)
+      (jrk:esc-filter str)
+      (progn
+        (setq out "" idx 1)
+        (if str
+          (while (<= idx (strlen str))
+            (setq ch (substr str idx 1))
+            (if (wcmatch ch "[#*?@.~`[\\],`]")
+              (setq out (strcat out "`" ch))
+              (setq out (strcat out ch))
+            )
+            (setq idx (1+ idx))
+          )
+        )
+        out
       )
     )
-    (if (and res (= (type res) 'STR)) res "")
   )
 
-  (defun put-text (ent str / elist typ newElist replaced obj)
-    (setq elist (entget ent) typ (cdr (assoc 0 elist)))
-    (cond
-      ((= typ "MULTILEADER")
-       (setq newElist nil replaced nil)
-       (foreach item elist
-         (if (and (not replaced)
-                  (= (car item) 304)
-                  (/= (strcase (cdr item)) "LEADER_LINE{"))
-           (progn
-             (setq newElist (cons (cons 304 str) newElist))
-             (setq replaced T)
-           )
-           (setq newElist (cons item newElist))
-         )
-       )
-       (entmod (reverse newElist)))
-
-      ((= typ "MTEXT")
-       (setq newElist nil)
-       (foreach item elist
-         (if (/= (car item) 3)
-           (if (= (car item) 1)
-             (setq newElist (cons (cons 1 str) newElist))
-             (setq newElist (cons item newElist))
-           )
-         )
-       )
-       (entmod (reverse newElist)))
-
-      ((member typ '("TEXT" "ATTRIB" "ATTDEF"))
-       (if (assoc 1 elist)
-         (entmod (subst (cons 1 str) (assoc 1 elist) elist))
-       ))
-    )
-    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
-    (if (and obj (not (vl-catch-all-error-p obj)))
+  (defun get-text (ent / elist typ obj res item)
+    (if (fboundp 'jrk:get-text)
+      (jrk:get-text ent)
       (progn
-        (vl-catch-all-apply 'vlax-put-property (list obj 'TextString str))
-        (vl-catch-all-apply 'vla-update (list obj))
+        (setq elist (entget ent) typ (cdr (assoc 0 elist)) res nil)
+        ;; Layer 1: Modern Property Engine
+        (if (and (null res) (fboundp 'getpropertyvalue))
+          (progn
+            (setq res
+              (cond
+                ((= typ "MULTILEADER") (vl-catch-all-apply 'getpropertyvalue (list ent "MText/Contents")))
+                ((= typ "MTEXT")       (vl-catch-all-apply 'getpropertyvalue (list ent "Contents")))
+                ((member typ '("TEXT" "ATTRIB" "ATTDEF"))
+                 (vl-catch-all-apply 'getpropertyvalue (list ent "TextString")))
+                (t nil)
+              )
+            )
+            (if (or (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
+              (setq res nil)
+            )
+          )
+        )
+        ;; Layer 2: ActiveX VLA COM Fallback
+        (if (null res)
+          (progn
+            (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
+            (if (and obj (not (vl-catch-all-error-p obj)))
+              (setq res (vl-catch-all-apply 'vlax-get-property (list obj 'TextString)))
+            )
+            (if (or (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
+              (setq res nil)
+            )
+          )
+        )
+        ;; Layer 3: Pure DXF Fallback
+        (if (null res)
+          (cond
+            ((= typ "MULTILEADER")
+             (setq res "")
+             (foreach item elist
+               (if (and (= (car item) 304)
+                        (/= (strcase (cdr item)) "LEADER_LINE{")
+                        (= res ""))
+                 (setq res (cdr item))
+               )
+             ))
+            ((= typ "MTEXT")
+             (setq res "")
+             (foreach item elist
+               (if (or (= (car item) 3) (= (car item) 1))
+                 (setq res (strcat res (cdr item)))
+               )
+             ))
+            (T
+             (setq res (cdr (assoc 1 elist))))
+          )
+        )
+        (if (and res (= (type res) 'STR)) res "")
       )
     )
-    (entupd ent)
+  )
+
+  (defun put-text (ent str / elist typ ok res newElist replaced obj)
+    (if (fboundp 'jrk:put-text)
+      (jrk:put-text ent str)
+      (progn
+        (setq elist (entget ent) typ (cdr (assoc 0 elist)) ok nil)
+        ;; Layer 1: Modern Property Engine
+        (if (and (not ok) (fboundp 'setpropertyvalue))
+          (progn
+            (setq res
+              (cond
+                ((= typ "MULTILEADER") (vl-catch-all-apply 'setpropertyvalue (list ent "MText/Contents" str)))
+                ((= typ "MTEXT")       (vl-catch-all-apply 'setpropertyvalue (list ent "Contents" str)))
+                ((member typ '("TEXT" "ATTRIB" "ATTDEF"))
+                 (vl-catch-all-apply 'setpropertyvalue (list ent "TextString" str)))
+                (t nil)
+              )
+            )
+            (if (and (not (vl-catch-all-error-p res)) (= (get-text ent) str))
+              (setq ok T)
+            )
+          )
+        )
+        ;; Layer 2: ActiveX VLA COM Fallback
+        (if (not ok)
+          (progn
+            (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
+            (if (and obj (not (vl-catch-all-error-p obj)))
+              (progn
+                (setq res (vl-catch-all-apply 'vlax-put-property (list obj 'TextString str)))
+                (if (not (vl-catch-all-error-p res))
+                  (progn
+                    (vl-catch-all-apply 'vla-update (list obj))
+                    (if (= (get-text ent) str)
+                      (setq ok T)
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+        ;; Layer 3: Pure DXF Fallback
+        (if (not ok)
+          (cond
+            ((= typ "MULTILEADER")
+             (setq newElist nil replaced nil)
+             (foreach item elist
+               (if (and (not replaced)
+                        (= (car item) 304)
+                        (/= (strcase (cdr item)) "LEADER_LINE{"))
+                 (progn
+                   (setq newElist (cons (cons 304 str) newElist))
+                   (setq replaced T)
+                 )
+                 (setq newElist (cons item newElist))
+               )
+             )
+             (entmod (reverse newElist)))
+
+            ((= typ "MTEXT")
+             (setq newElist nil)
+             (foreach item elist
+               (if (/= (car item) 3)
+                 (if (= (car item) 1)
+                   (setq newElist (cons (cons 1 str) newElist))
+                   (setq newElist (cons item newElist))
+                 )
+               )
+             )
+             (entmod (reverse newElist)))
+
+            ((member typ '("TEXT" "ATTRIB" "ATTDEF"))
+             (if (assoc 1 elist)
+               (entmod (subst (cons 1 str) (assoc 1 elist) elist))
+             ))
+          )
+        )
+        (entupd ent)
+      )
+    )
   )
 
   ;; Splits "{\fArial;\W0.5;Hello}" -> (list "{\fArial;\W0.5;" "Hello" "}")
@@ -622,8 +710,11 @@
            ((= scopeMode "MANUAL")
             (princ "\n>> Select Target Objects to paint style/text onto: ")
             (setq ss (ssget)))
-           (T
+           ((= scopeMode "GLOBAL")
             (setq ss (ssget "_X" '((0 . "TEXT,MTEXT,MULTILEADER,ATTRIB,ATTDEF")))))
+           (T
+            (setq ss (ssget "_X" (list '(0 . "TEXT,MTEXT,MULTILEADER,ATTRIB,ATTDEF")
+                                       (cons 8 (esc-filter srcLayer))))))
          )
 
          (if ss

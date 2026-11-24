@@ -11,6 +11,11 @@ const DEFAULT_SETTINGS = {
   mediumPipeThreshold: 14,
   smartLengthFormatting: true,
   cleanGradientPrefix: true,
+  // Hydraulic & Civil QA/QC settings (SPAN MSIG / MSMA)
+  minSewerVelocity: 0.8,
+  minDrainVelocity: 0.6,
+  maxPipeVelocity: 4.0,
+  minCoverDepth: 1.2,
   // SEWSECTION settings
   secHorScale: 1000,
   secVerScale: 200,
@@ -20,6 +25,33 @@ const DEFAULT_SETTINGS = {
   secManualDatum: 0,
   secSplitMode: 'CROSS', // 'CROSS' = split at MH >= 200m, 'STRICT' = split before exceeding 200m
 };
+
+function sanitizeSettings(raw) {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_SETTINGS };
+  const num = (val, fallback, min, max) => {
+    const n = parseFloat(val);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+  };
+  return {
+    textWidthFactor: num(raw.textWidthFactor, DEFAULT_SETTINGS.textWidthFactor, 0.1, 2.0),
+    shortPipeThreshold: num(raw.shortPipeThreshold, DEFAULT_SETTINGS.shortPipeThreshold, 0.5, 100),
+    mediumPipeThreshold: num(raw.mediumPipeThreshold, DEFAULT_SETTINGS.mediumPipeThreshold, 1.0, 200),
+    smartLengthFormatting: typeof raw.smartLengthFormatting === 'boolean' ? raw.smartLengthFormatting : DEFAULT_SETTINGS.smartLengthFormatting,
+    cleanGradientPrefix: typeof raw.cleanGradientPrefix === 'boolean' ? raw.cleanGradientPrefix : DEFAULT_SETTINGS.cleanGradientPrefix,
+    minSewerVelocity: num(raw.minSewerVelocity, DEFAULT_SETTINGS.minSewerVelocity, 0.1, 3.0),
+    minDrainVelocity: num(raw.minDrainVelocity, DEFAULT_SETTINGS.minDrainVelocity, 0.1, 3.0),
+    maxPipeVelocity: num(raw.maxPipeVelocity, DEFAULT_SETTINGS.maxPipeVelocity, 1.0, 15.0),
+    minCoverDepth: num(raw.minCoverDepth, DEFAULT_SETTINGS.minCoverDepth, 0.3, 10.0),
+    secHorScale: [200, 500, 1000, 1500, 2000].includes(Number(raw.secHorScale)) ? Number(raw.secHorScale) : DEFAULT_SETTINGS.secHorScale,
+    secVerScale: [200, 500, 1000].includes(Number(raw.secVerScale)) ? Number(raw.secVerScale) : DEFAULT_SETTINGS.secVerScale,
+    secMaxDist: num(raw.secMaxDist, DEFAULT_SETTINGS.secMaxDist, 10, 5000),
+    secAutoDatum: typeof raw.secAutoDatum === 'boolean' ? raw.secAutoDatum : DEFAULT_SETTINGS.secAutoDatum,
+    secBaseDatumUnder10: num(raw.secBaseDatumUnder10, DEFAULT_SETTINGS.secBaseDatumUnder10, -50, 50),
+    secManualDatum: num(raw.secManualDatum, DEFAULT_SETTINGS.secManualDatum, -100, 1000),
+    secSplitMode: raw.secSplitMode === 'STRICT' ? 'STRICT' : 'CROSS',
+  };
+}
 
 // Realistic Demo Datasets for 1-Click Testing (Includes EXTG, STP & CROSSING examples)
 const DEMO_DRAINAGE_DATA = [
@@ -57,7 +89,11 @@ const DEMO_MIXED_DATA = [
 
 function escapeCSV(val) {
   if (val === null || val === undefined) return '';
-  const str = String(val);
+  let str = String(val);
+  // Prevent CSV Formula Injection for non-numeric strings starting with =, +, -, @, \t, \r
+  if (/^[=+\-@\t\r]/.test(str) && !/^[+-]?\d+(\.\d+)?$/.test(str.trim())) {
+    str = `'${str}`;
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -67,6 +103,7 @@ function escapeCSV(val) {
 window.STORAGE_KEY = STORAGE_KEY;
 window.THEME_KEY = THEME_KEY;
 window.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
+window.sanitizeSettings = sanitizeSettings;
 window.DEMO_DRAINAGE_DATA = DEMO_DRAINAGE_DATA;
 window.DEMO_SEWERAGE_DATA = DEMO_SEWERAGE_DATA;
 window.DEMO_MIXED_DATA = DEMO_MIXED_DATA;

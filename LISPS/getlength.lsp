@@ -44,8 +44,10 @@
 ;;;  - suffix   : Unit suffix label printed to command line (default: "m").
 ;;; ==========================================================================
 
-(defun c:getlength ( / *error* divideBy decimals suffix pt1 nextPt lastPt totalLen
-                       outText copy-clip)
+(vl-load-com)
+
+(defun c:getlength ( / *error* oldDimZin divideBy decimals suffix pt1 nextPt lastPt
+                       wLast wNext totalLen outText fmt-dec copy-clip)
 
   ;; =========================================================================
   ;; 1. USER SETTINGS & CONFIGURATION
@@ -58,43 +60,113 @@
   ;; =========================================================================
   ;; 2. ERROR HANDLING & CLEANUP
   ;; =========================================================================
+  (setq oldDimZin (getvar "DIMZIN"))
+  (setvar "DIMZIN" 0)
+
   (defun *error* (msg)
+    (if oldDimZin (setvar "DIMZIN" oldDimZin))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
-      (princ (strcat "\nError: " msg)))
+      (princ (strcat "\n[GETLENGTH] Error: " msg)))
     (princ)
   )
 
   ;; =========================================================================
-  ;; 3. WINDOWS CLIPBOARD PIPE HELPER
+  ;; 3. ZERO-PADDED FORMATTER & HARDENED WINDOWS CLIPBOARD HELPER
   ;; =========================================================================
-  ;; Copy text to the Windows clipboard through a temp file (safe for all characters)
-  (defun copy-clip (txt / path fh)
-    (setq path (strcat (cond ((getenv "TEMP")) ((getenv "TMP")) ("C:\\Temp")) "\\acad_clip.txt"))
-    (if (and (boundp 'startapp) (setq fh (open path "w")))
+  (defun fmt-dec (val dec / s dotPos fracLen)
+    (if (fboundp 'jrk:fmt-dec)
+      (jrk:fmt-dec val dec)
       (progn
-        (princ txt fh)
-        (close fh)
-        (startapp (strcat "cmd.exe /c clip < \"" path "\""))
-        T)
-      nil))
+        (setq s (rtos val 2 dec)
+              dotPos (vl-string-search "." s)
+        )
+        (if (null dotPos)
+          (progn
+            (setq s (strcat s "."))
+            (repeat dec (setq s (strcat s "0")))
+          )
+          (progn
+            (setq fracLen (- (strlen s) dotPos 1))
+            (while (< fracLen dec)
+              (setq s (strcat s "0") fracLen (1+ fracLen))
+            )
+          )
+        )
+        s
+      )
+    )
+  )
+
+  (defun copy-clip (txt / html pw clip ok tmp fh wsh cmd)
+    (if (fboundp 'jrk:copy-clip)
+      (jrk:copy-clip txt)
+      (progn
+        (setq ok nil)
+        (setq html (vl-catch-all-apply 'vlax-create-object (list "htmlfile")))
+        (if (and html (not (vl-catch-all-error-p html)))
+          (progn
+            (setq pw (vl-catch-all-apply 'vlax-get (list html 'ParentWindow)))
+            (if (and pw (not (vl-catch-all-error-p pw)))
+              (progn
+                (setq clip (vl-catch-all-apply 'vlax-get (list pw 'ClipboardData)))
+                (if (and clip (not (vl-catch-all-error-p clip)))
+                  (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list clip 'setData "Text" txt))))
+                    (setq ok T)
+                  )
+                )
+              )
+            )
+            (vl-catch-all-apply 'vlax-release-object (list html))
+          )
+        )
+        (if (not ok)
+          (progn
+            (setq tmp (vl-filename-mktemp "jrk_clip_" (getenv "TEMP") ".txt"))
+            (if (and tmp (setq fh (open tmp "w")))
+              (progn
+                (princ txt fh)
+                (close fh)
+                (setq cmd (strcat "cmd.exe /c clip < \"" tmp "\""))
+                (setq wsh (vl-catch-all-apply 'vlax-create-object (list "WScript.Shell")))
+                (if (and wsh (not (vl-catch-all-error-p wsh)))
+                  (progn
+                    (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))
+                    (vl-catch-all-apply 'vlax-release-object (list wsh))
+                    (setq ok T)
+                  )
+                )
+                (vl-catch-all-apply 'vl-file-delete (list tmp))
+              )
+            )
+          )
+        )
+        ok
+      )
+    )
+  )
 
   ;; =========================================================================
-  ;; 4. INTERACTIVE POINT PICK & ACCUMULATION ENGINE
+  ;; 4. INTERACTIVE POINT PICK & ACCUMULATION ENGINE (Rule #5 UCS -> WCS)
   ;; =========================================================================
   (while (setq pt1 (getpoint "\nClick Start Point (or Enter to exit): "))
     (setq totalLen 0.0 lastPt pt1)
     (while (setq nextPt (getpoint lastPt "\nClick Next Point (or Enter to finish): "))
-      ;; 2D planar length (Z elevation ignored)
-      (setq totalLen (+ totalLen (distance (list (car lastPt) (cadr lastPt) 0.0)
-                                           (list (car nextPt) (cadr nextPt) 0.0))))
-      (setq lastPt nextPt))
+      ;; Transform UCS pick points to WCS before computing 2D planar length
+      (setq wLast (trans lastPt 1 0)
+            wNext (trans nextPt 1 0)
+            totalLen (+ totalLen (distance (list (car wLast) (cadr wLast) 0.0)
+                                           (list (car wNext) (cadr wNext) 0.0)))
+            lastPt nextPt
+      )
+    )
     (if (> totalLen 0.0)
       (progn
-        (setq outText (rtos (/ totalLen divideBy) 2 decimals))
+        (setq outText (fmt-dec (/ totalLen divideBy) decimals))
         (if (copy-clip outText)
           (princ (strcat "\n>> Length: " outText " " suffix " (Copied to Clipboard!)"))
           (princ (strcat "\n>> Length: " outText " " suffix " (clipboard unavailable)")))
         )
       (princ "\nNot enough points clicked.")))
+  (if oldDimZin (setvar "DIMZIN" oldDimZin))
   (princ)
 )

@@ -110,7 +110,71 @@ function downloadTemplateWorkbook(showToast) {
   if (showToast) showToast('Downloaded: JRK_AutoCAD_Smart_Schedule_Template.xlsx');
 }
 
-// 5. Clipboard Helpers
+// 5. Export Civil & Hydraulic QA/QC Discrepancy Report (.CSV)
+function exportQaReportCSV(processedRows, sewSections, targetTool, showToast) {
+  const lines = [
+    'Workflow,Section_or_Category,ID,Size_mm,Length_m,Gradient_1in,GL_m,IL_m,Depth_m,Velocity_m_s,Capacity_L_s,QA_Status,QA_Warnings',
+  ];
+
+  if (targetTool === 'SEWSECTION' && sewSections && sewSections.length > 0) {
+    sewSections.forEach((sec) => {
+      sec.nodes.forEach((node, nIdx) => {
+        const isLast = nIdx === sec.nodes.length - 1;
+        const nextNode = !isLast ? sec.nodes[nIdx + 1] : null;
+        const segLen = !isLast ? (nextNode.dist - node.dist).toFixed(2) : '';
+        const vel = node.hydraulics ? node.hydraulics.velocityMs.toFixed(2) : '';
+        const cap = node.hydraulics ? node.hydraulics.capacityLs.toFixed(1) : '';
+        const warns = node.qaWarnings && node.qaWarnings.length > 0 ? node.qaWarnings.join(' | ') : 'PASS';
+        lines.push([
+          'SEWSECTION',
+          escapeCSV(`Section ${sec.index}`),
+          escapeCSV(node.id),
+          escapeCSV(!isLast ? node.size : ''),
+          escapeCSV(segLen),
+          escapeCSV(!isLast ? node.grad : ''),
+          escapeCSV(node.gl.toFixed(2)),
+          escapeCSV(node.ilOut.toFixed(2)),
+          escapeCSV((node.gl - node.ilOut).toFixed(2)),
+          escapeCSV(vel),
+          escapeCSV(cap),
+          escapeCSV(warns === 'PASS' ? 'PASS' : 'FLAGGED'),
+          escapeCSV(warns),
+        ].join(','));
+      });
+    });
+  } else if (processedRows && processedRows.length > 0) {
+    processedRows.forEach((row) => {
+      const vel = row.hydraulics ? row.hydraulics.velocityMs.toFixed(2) : '';
+      const cap = row.hydraulics ? row.hydraulics.capacityLs.toFixed(1) : '';
+      const warns = row.qaWarnings && row.qaWarnings.length > 0 ? row.qaWarnings.join(' | ') : 'PASS';
+      lines.push([
+        'CSVUPDATE',
+        escapeCSV(row.category),
+        escapeCSV(row.id),
+        escapeCSV(row.drainDetails.size || ''),
+        escapeCSV(row.drainDetails.length || ''),
+        escapeCSV(row.drainDetails.gradient || ''),
+        escapeCSV(row.sewerDetails.gl || ''),
+        escapeCSV(row.sewerDetails.il || row.drainDetails.il || ''),
+        escapeCSV(row.sewerDetails.depth || ''),
+        escapeCSV(vel),
+        escapeCSV(cap),
+        escapeCSV(warns === 'PASS' ? 'PASS' : 'FLAGGED'),
+        escapeCSV(warns),
+      ].join(','));
+    });
+  } else {
+    alert('No schedule data loaded to export QA/QC report.');
+    return;
+  }
+
+  triggerCsvDownload(lines.join('\r\n'), 'AutoCAD_QAQC_Hydraulic_Audit_Report.csv');
+  if (showToast) {
+    showToast('Exported "AutoCAD_QAQC_Hydraulic_Audit_Report.csv"!');
+  }
+}
+
+// 6. Clipboard Helpers
 function copyAllRowsToClipboard(processedRows, showToast) {
   if (!processedRows || processedRows.length === 0) return;
   const csvContent = processedRows
@@ -131,5 +195,6 @@ window.exportRawCSV = exportRawCSV;
 window.exportMtextCSVFile = exportMtextCSVFile;
 window.exportSewSectionCSVFile = exportSewSectionCSVFile;
 window.downloadTemplateWorkbook = downloadTemplateWorkbook;
+window.exportQaReportCSV = exportQaReportCSV;
 window.copyAllRowsToClipboard = copyAllRowsToClipboard;
 window.copyTextToClipboard = copyTextToClipboard;

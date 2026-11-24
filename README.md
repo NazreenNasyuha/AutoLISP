@@ -9,7 +9,7 @@
 
 > 🚀 **Live Web Application**: Launch the [AutoCAD Smart XLS-to-CSV Bridge](https://nazreennasyuha.github.io/AutoLISP/) directly in your browser.
 
-A battle-tested, production-grade suite of **15 specialized AutoLISP tools** and an integrated **Engineering Web Bridge** tailored for civil infrastructure, road drainage design (**MSMA compliance**), municipal sewerage reticulation, water supply hydraulic modeling (**EPANET**), earthwork catchment hydrology, and high-speed drafting automation.
+A battle-tested, production-grade suite of **25 specialized AutoLISP commands + a shared core kernel (`jrk-core.lsp`)** and an integrated **Engineering Web Bridge** tailored for civil infrastructure, road drainage design (**MSMA compliance**), municipal sewerage reticulation (**SPAN MSIG compliance**), water supply hydraulic modeling (**EPANET**), earthwork catchment hydrology, and high-speed drafting automation.
 
 Engineered from the ground up to be **100% vanilla AutoLISP**—eliminating fragile COM/ActiveX (`vla-`/`vlax-`) dependencies to guarantee native, crash-free performance across **AutoCAD, AutoCAD LT (2024+), GstarCAD, ZWCAD, and BricsCAD**.
 
@@ -41,22 +41,32 @@ AutoLISP/
 │           ├── Footer.js        # Sticky status bar & context-aware CSV export actions
 │           └── Modals.js        # SettingsModal, FeedbackModal, GuideModal & Toast
 ├── load-all.lsp                 # Master One-Click Loader (root entrypoint)
-├── LISPS/                       # Dedicated directory for all AutoLISP routines
+├── LISPS/                       # Dedicated directory for all AutoLISP routines (25 commands + core kernel)
+│   ├── jrk-core.lsp             # Shared Civil AutoLISP kernel (wildcard escaper, 3-layer text, Shoelace WCS centroid, clipboard)
 │   ├── catchmentarea.lsp        # 4-corner catchment & roof ridge splitter
-│   ├── csvupdate.lsp            # 5-column CSV injection & red QA/QC verification
+│   ├── csvextract.lsp           # Round-trip CAD callout to Web Bridge schedule CSV extractor
+│   ├── csvupdate.lsp            # 5-column CSV injection & red/blue QA/QC verification
 │   ├── epalink.lsp              # EPANET pipe results hexagon & text annotator
 │   ├── epanode.lsp              # EPANET junction node results table generator
+│   ├── ewfill.lsp               # Earthwork & road level linear interpolator
 │   ├── getallaream.lsp          # Batch closed polyline area summation (m2)
 │   ├── getarea.lsp              # Polyline area breakdown (m2, ha, ac) + clipboard
 │   ├── getareaacre.lsp          # Dedicated acre (ac) area calculator + clipboard
 │   ├── getareaha.lsp            # Dedicated hectare (ha) area calculator + clipboard
 │   ├── getaream.lsp             # Dedicated square meter (m2) area calculator + clipboard
 │   ├── getlength.lsp            # Cumulative distance accumulator + clipboard
+│   ├── guidemiddle.lsp          # 4-corner road centerline generator with extension
 │   ├── guideoffset.lsp          # Click-to-trace parcel guide offset generator
+│   ├── mathsim.lsp              # Select similar text/MLeader & batch add/subtract numbers
 │   ├── pipec.lsp                # Road drainage generator (sumps, arrows, SIL leaders)
+│   ├── pipechouse.lsp           # Residential lot drain generator with live 30m ruler
 │   ├── r180.lsp                 # Single-click 180-degree entity flip about centroid
+│   ├── repsim.lsp               # Replace similar text + Canva/Word Style Painter
+│   ├── roadsec.lsp              # Parametric JKR/MSMA road longitudinal section generator
 │   ├── sewpipec.lsp             # Sewerage network generator (manholes, IL leaders)
 │   ├── sewsection.lsp           # Automated sewer longitudinal section generator
+│   ├── tbox.lsp                 # Dynamic text/MText frame & callout box generator
+│   ├── torient.lsp              # Universal orientation alignment tool (Blocks/MText/Text/Lines)
 │   └── tseq.lsp                 # Smart alphanumeric sequence renumbering engine
 ├── 404.html                     # GitHub Pages fallback routing
 ├── .nojekyll                    # Disables Jekyll processing for GitHub Pages
@@ -139,20 +149,30 @@ If you prefer loading individual scripts by name:
 
 | Command | File in `LISPS/` | Description | User Inputs / Triggers | Generated Output |
 | :--- | :--- | :--- | :--- | :--- |
-| `PIPEC` | [`pipec.lsp`](LISPS/pipec.lsp) | Road drainage network generator | Pick Start Pt $\rightarrow$ Pick End Pt (with auto 30m splitting) | Centerline, R=600 sumps, flow arrows, pipe label, SIL Multileader |
-| `SEWPIPEC` | [`sewpipec.lsp`](LISPS/sewpipec.lsp) | Sewer reticulation network generator | Pick Start Pt $\rightarrow$ Pick End Pt (with auto 100m splitting) | Pipe line, R=750 manholes, flow arrows, VCP label, 4-line MH Multileader |
-| `GUIDEOFFSET` | [`guideoffset.lsp`](LISPS/guideoffset.lsp) | Closed parcel guide offset tracer | Offset distance $\rightarrow$ Pick corners $\rightarrow$ Pick offset side | Closed offset polyline on `DRN-GUIDE-{dist}` (Color 8) |
-| `CATCHMENTAREA` | [`catchmentarea.lsp`](LISPS/catchmentarea.lsp) | 4-corner catchment & roof ridge divider | 4 Inner Pts $\rightarrow$ 4 Outer Pts $\rightarrow$ 2 Ridge Pts | 4 closed polylines on `DRN-TOTALAREA` + centered m² text |
-| `CSVUPDATE` | [`csvupdate.lsp`](LISPS/csvupdate.lsp) | Excel CSV smart data injection | Select 5-column CSV $\rightarrow$ Select CAD text/mleaders | Injects Drain/Sewer data + draws red QA/QC bounding boxes |
+| `CATCHMENTAREA` | [`catchmentarea.lsp`](LISPS/catchmentarea.lsp) | 4-corner catchment & roof ridge divider | 4 Inner Pts $\rightarrow$ 4 Outer Pts $\rightarrow$ 2 Ridge Pts | 4 closed polylines on `CatchmentArea` + centered m² text |
+| `CSVEXTRACT` | [`csvextract.lsp`](LISPS/csvextract.lsp) | Round-trip CAD callout to CSV extractor | Pick Selection or Sample Layer $\rightarrow$ Save `.csv` | Clean schedule CSV (`ID,Size,Length,Gradient,GL,IL,Depth,Category`) |
+| `CSVUPDATE` | [`csvupdate.lsp`](LISPS/csvupdate.lsp) | Excel CSV smart data injection | Select 5-column CSV $\rightarrow$ Pick sample text layer | Injects Drain/Sewer data + draws red/blue QA/QC bounding boxes |
 | `EPALINK` | [`epalink.lsp`](LISPS/epalink.lsp) | EPANET pipe hydraulic annotator | Select `.rpt` file $\rightarrow$ Text height $\rightarrow$ Pick pipe & angle | Magenta hexagon (ID) + Red hydraulic text (`L=... Q=... Vs=... HL=...`) |
 | `EPANODE` | [`epanode.lsp`](LISPS/epanode.lsp) | EPANET junction node table annotator | Select `.rpt` file $\rightarrow$ Text height $\rightarrow$ Pick node position | 4-row engineering table block (Node ID, HSL, Demand Q, Pressure RP) |
-| `GETALLAREAM` | [`getallaream.lsp`](LISPS/getallaream.lsp) | Batch polyline area summation | Select closed polylines (window/crossing) | Centered `X.XXX m2` text on each polyline + Grand Total in prompt |
-| `GETAREA` | [`getarea.lsp`](LISPS/getarea.lsp) | Universal multi-unit area query | Click any closed polyline | Centered `m2 / ha / ac` text + full string copied to clipboard |
+| `EWFILL` | [`ewfill.lsp`](LISPS/ewfill.lsp) | Earthwork & road level interpolator | Pick start/end levels & intermediate points | Linearly interpolated proposed levels & spot annotations |
+| `GETALLAREAM` | [`getallaream.lsp`](LISPS/getallaream.lsp) | Batch polyline area summation | Select closed polylines (window/crossing) | Centered `X.XXX m2` text at true Shoelace centroid + Grand Total |
+| `GETAREA` | [`getarea.lsp`](LISPS/getarea.lsp) | Universal multi-unit area query | Click any closed polyline | Multi-unit `mm2 / m2 / ha / ac` summary copied to clipboard |
 | `GETAREAM` | [`getaream.lsp`](LISPS/getaream.lsp) | Dedicated square meter ($m^2$) extraction | Click any closed polyline | Centered `X.XXXX m2` text + numeric $m^2$ copied to clipboard |
 | `GETAREAHA` | [`getareaha.lsp`](LISPS/getareaha.lsp) | Dedicated hectare ($ha$) extraction | Click any closed polyline | Centered `X.XXXX ha` text + numeric $ha$ copied to clipboard |
 | `GETAREAACRE` | [`getareaacre.lsp`](LISPS/getareaacre.lsp) | Dedicated acre ($ac$) extraction | Click any closed polyline | Centered `X.XXXX ac` text + numeric $ac$ copied to clipboard |
-| `GETLENGTH` | [`getlength.lsp`](LISPS/getlength.lsp) | Continuous 2D path distance accumulator | Pick initial point $\rightarrow$ Pick consecutive points $\rightarrow$ Enter | Flat 2D distance printed to prompt + meters copied to clipboard |
-| `R180` | [`r180.lsp`](LISPS/r180.lsp) | Single-click 180° in-place rotation | Click entity in continuous loop $\rightarrow$ Enter | Rotates entity 180° around true centroid (Line, Polyline, Text, Block) |
+| `GETLENGTH` | [`getlength.lsp`](LISPS/getlength.lsp) | Continuous 2D path distance accumulator | Pick initial point $\rightarrow$ Pick consecutive points $\rightarrow$ Enter | Flat 2D WCS distance printed to prompt + meters copied to clipboard |
+| `GUIDEMIDDLE` | [`guidemiddle.lsp`](LISPS/guidemiddle.lsp) | 4-corner road centerline generator | Pick 4 road corners + extension length | True road centerline polyline extended at both ends |
+| `GUIDEOFFSET` | [`guideoffset.lsp`](LISPS/guideoffset.lsp) | Closed parcel guide offset tracer | Offset distance $\rightarrow$ Pick corners $\rightarrow$ Pick offset side | Closed offset polyline on `DRN-GUIDE-{dist}` (Color 8) |
+| `MATHSIM` | [`mathsim.lsp`](LISPS/mathsim.lsp) | Batch numerical math on CAD text | Select sample text $\rightarrow$ Configure add/sub/mul/div | Updates numeric tokens across matching `TEXT`/`MTEXT`/`MULTILEADER` |
+| `PIPEC` | [`pipec.lsp`](LISPS/pipec.lsp) | Road drainage network generator | Pick Start Pt $\rightarrow$ Pick End Pt (with auto 30m splitting) | Centerline, R=600 sumps, flow arrows, pipe label, SIL Multileader |
+| `PIPECHOUSE` | [`pipechouse.lsp`](LISPS/pipechouse.lsp) | Residential lot drain generator | Pick Start Pt $\rightarrow$ Live 30m ruler $\rightarrow$ Pick End Pt | Lot drain lines, sumps, flow arrows & parametric callouts |
+| `R180` | [`r180.lsp`](LISPS/r180.lsp) | Single-click 180° in-place rotation | Click entity in continuous loop $\rightarrow$ Enter | Rotates entity 180° around true visual centroid |
+| `REPSIM` | [`repsim.lsp`](LISPS/repsim.lsp) | Replace similar text + Style Painter | Pick target text $\rightarrow$ Optional donor style $\rightarrow$ Apply | Global/Layer search & replace + Canva/Word format painting |
+| `ROADSEC` | [`roadsec.lsp`](LISPS/roadsec.lsp) | Road longitudinal section generator | Select alignment polyline & level annotations | Scaled JKR/MSMA road longitudinal profile & datum band table |
+| `SEWPIPEC` | [`sewpipec.lsp`](LISPS/sewpipec.lsp) | Sewer reticulation network generator | Pick Start Pt $\rightarrow$ Pick End Pt (with auto 100m splitting) | Pipe line, R=750 manholes, flow arrows, VCP label, 4-line MH Multileader |
+| `SEWSECTION` | [`sewsection.lsp`](LISPS/sewsection.lsp) | Sewer longitudinal profile generator | Select Web Bridge CSV or Excel file $\rightarrow$ Pick insertion point | Scaled sewer longitudinal section with closed MH shafts & datum table |
+| `TBOX` | [`tbox.lsp`](LISPS/tbox.lsp) | Dynamic text callout box generator | Pick text entities $\rightarrow$ Configure offset & shape | Rotated rectangular/slot framing boxes around text/MText |
+| `TORIENT` | [`torient.lsp`](LISPS/torient.lsp) | Universal orientation alignment tool | Pick target entities $\rightarrow$ Pick reference alignment | Aligns blocks, text, MText, and lines to target angle/readability |
 | `TSEQ` | [`tseq.lsp`](LISPS/tseq.lsp) | Smart alphanumeric sequencer | Enter start sequence (e.g. `D1`, `MH01`) $\rightarrow$ Click labels | Replaces ID only, preserves width factor (`\W0.5;`) & multi-line formatting |
 
 ---
@@ -514,8 +534,11 @@ The [Web Application](https://nazreennasyuha.github.io/AutoLISP/) acts as the in
 3. **Smart Manhole Deduplication**:
    - Sewer schedules frequently list the same manhole twice (as the outfall of one line and the inlet of another).
    - When duplicate Manhole IDs are detected, the deduplication engine automatically compares Invert Levels and **keeps the lowest IL (deepest connection)**, recalculating depth accordingly.
-4. **Export Engine**:
-   - Exports the standardized 5-column file: `AutoCAD_Smart_Raw.csv` (`ID,Val1,Val2,Val3,Category`), ready for direct batch injection by `CSVUPDATE`.
+4. **SPAN MSIG & MSMA Hydraulic QA/QC Engine**:
+   - Computes Manning's full-bore velocity ($V = \frac{1}{n} R^{2/3} S^{1/2}$) and discharge capacity ($Q = A \cdot V$ in L/s) for every pipe/drain segment.
+   - Automatically flags self-cleansing velocity violations ($V < 0.80\text{ m/s}$ for sewerage per SPAN MSIG; $V < 0.60\text{ m/s}$ for drainage per MSMA), scouring velocity violations ($V > 4.00\text{ m/s}$), reverse pipe slopes (backfall), downstream pipe diameter reductions (`Dia Reduction`), shallow cover depths, and backdrop manhole thresholds ($\ge 0.60\text{m}$).
+5. **Round-Trip Export & Audit Engine**:
+   - Exports the standardized 5-column `CSVUPDATE` file (`AutoCAD_Smart_Raw.csv`), 9-column `SEWSECTION` longitudinal profile CSV, and a standalone **QA/QC Engineering Audit Report CSV**, while accepting round-trip CAD schedules extracted via `CSVEXTRACT`.
 
 ---
 

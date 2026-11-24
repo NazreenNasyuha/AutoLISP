@@ -300,12 +300,19 @@ function SewSectionView({
                             </td>
                             <td className="py-2.5 px-4">
                               {!isLast ? (
-                                <span className={`px-2.5 py-1 rounded border ${n.spanQaWarnings && n.spanQaWarnings.length > 0
-                                    ? 'text-amber-300 bg-amber-950/50 border-amber-500/40'
-                                    : 'text-white bg-cadslate-950 border-cadslate-800'
-                                  }`}>
-                                  {n.size}Ø {n.mat} 1:{n.grad} ({segLen.toFixed(2)}m)
-                                </span>
+                                <div className="flex flex-col items-start gap-1">
+                                  <span className={`px-2.5 py-1 rounded border ${n.spanQaWarnings && n.spanQaWarnings.length > 0
+                                      ? 'text-amber-300 bg-amber-950/50 border-amber-500/40'
+                                      : 'text-white bg-cadslate-950 border-cadslate-800'
+                                    }`}>
+                                    {n.size}Ø {n.mat} 1:{n.grad} ({segLen.toFixed(2)}m)
+                                  </span>
+                                  {n.hydraulics && (
+                                    <span className="text-[10px] text-slate-400 font-mono pl-1">
+                                      V={n.hydraulics.velocityMs.toFixed(2)}m/s • Q={n.hydraulics.capacityLs.toFixed(1)}L/s
+                                    </span>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-slate-500 italic">End of Section ({sec.totalLength.toFixed(2)}m)</span>
                               )}

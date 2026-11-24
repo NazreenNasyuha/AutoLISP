@@ -103,9 +103,52 @@ function normalizeCadId(rawId, isSewerRow) {
   }
 }
 
-// Evaluates Civil Engineering QA/QC rules for a row or node
-function evaluateQaWarnings({ isSewerRow, gl, il, depth, ilIn, ilOut, ilUp, ilDown, bd, grad }) {
+// Computes Manning's full-bore hydraulic velocity (m/s) and capacity (L/s)
+// V = (1/n) * R^(2/3) * S^(1/2), where R = D/4 for circular pipe / equivalent hydraulic radius
+function computePipeHydraulics(sizeMm, gradDenom, mat = 'VCP', isSewerRow = true) {
+  const dMm = parseFloat(sizeMm);
+  const gDen = parseFloat(gradDenom);
+  if (isNaN(dMm) || dMm <= 0 || isNaN(gDen) || gDen <= 0) {
+    return null;
+  }
+  const dM = dMm / 1000.0;
+  const slope = 1.0 / gDen;
+  const matUpper = String(mat || '').toUpperCase();
+  let n = isSewerRow ? 0.013 : 0.015;
+  if (matUpper.includes('HDPE') || matUpper.includes('UPVC') || matUpper.includes('PVC') || matUpper === 'PE') {
+    n = 0.011;
+  } else if (matUpper.includes('DI') || matUpper.includes('STEEL')) {
+    n = 0.012;
+  } else if (matUpper.includes('VCP')) {
+    n = 0.013;
+  } else if (matUpper.includes('RCP') || matUpper.includes('CONC')) {
+    n = 0.014;
+  }
+
+  const rHyd = dM / 4.0;
+  const areaM2 = (Math.PI * dM * dM) / 4.0;
+  const velocityMs = (1.0 / n) * Math.pow(rHyd, 2.0 / 3.0) * Math.sqrt(slope);
+  const capacityLs = areaM2 * velocityMs * 1000.0;
+
+  return {
+    diameterMm: dMm,
+    gradientDenom: gDen,
+    manningN: n,
+    velocityMs,
+    capacityLs,
+  };
+}
+
+// Evaluates Civil Engineering & SPAN MSIG / MSMA Hydraulic QA/QC rules for a row or node
+function evaluateQaWarnings({ isSewerRow, gl, il, depth, ilIn, ilOut, ilUp, ilDown, bd, grad, size, mat, settings }) {
   const warnings = [];
+  const cfg = settings || DEFAULT_SETTINGS;
+  const minCover = parseFloat(cfg.minCoverDepth) || 1.2;
+  const minVel = isSewerRow
+    ? (parseFloat(cfg.minSewerVelocity) || 0.8)
+    : (parseFloat(cfg.minDrainVelocity) || 0.6);
+  const maxVel = parseFloat(cfg.maxPipeVelocity) || 4.0;
+
   const numGL = parseFloat(gl);
   const numIL = parseFloat(il);
   const numDepth = !isNaN(parseFloat(depth))
@@ -126,9 +169,9 @@ function evaluateQaWarnings({ isSewerRow, gl, il, depth, ilIn, ilOut, ilUp, ilDo
     warnings.push(`Reverse MH Drop (IL In ${numIlIn.toFixed(2)}m < IL Out ${numIlOut.toFixed(2)}m)`);
   }
 
-  // 2. Shallow depth (< 1.2m)
-  if (isSewerRow && !isNaN(numDepth) && numDepth > 0 && numDepth < 1.2) {
-    warnings.push(`Shallow Depth (${numDepth.toFixed(2)}m < 1.20m)`);
+  // 2. Shallow depth (< minCoverDepth, default 1.2m)
+  if (isSewerRow && !isNaN(numDepth) && numDepth > 0 && numDepth < minCover) {
+    warnings.push(`Shallow Depth (${numDepth.toFixed(2)}m < ${minCover.toFixed(2)}m)`);
   }
 
   // 3. Backdrop manhole requirement (ilIn - ilOut >= 0.60m)
@@ -145,6 +188,16 @@ function evaluateQaWarnings({ isSewerRow, gl, il, depth, ilIn, ilOut, ilUp, ilDo
       warnings.push(`Extreme Steep Gradient (1:${Math.round(numGrad)} < 1:15)`);
     } else if (numGrad > 500) {
       warnings.push(`Extreme Flat Gradient (1:${Math.round(numGrad)} > 1:500)`);
+    }
+  }
+
+  // 5. Manning's Full-Bore Velocity Compliance (SPAN MSIG / MSMA Self-Cleansing & Scouring Limits)
+  const hyd = computePipeHydraulics(size, numGrad, mat, isSewerRow);
+  if (hyd) {
+    if (hyd.velocityMs < minVel - 1e-4) {
+      warnings.push(`Low Velocity (${hyd.velocityMs.toFixed(2)}m/s < ${minVel.toFixed(2)}m/s self-cleansing)`);
+    } else if (hyd.velocityMs > maxVel + 1e-4) {
+      warnings.push(`High Scouring Velocity (${hyd.velocityMs.toFixed(2)}m/s > ${maxVel.toFixed(2)}m/s)`);
     }
   }
 
@@ -233,6 +286,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
   const maxCandidateIL = candidateILs.length > 0 ? Math.max(...candidateILs) : NaN;
 
   const hasSpecialTag = SE_SPECIAL_TAG_EXTRACT_RE.test(effectiveId);
+  const matRaw = String(row[columnMap.pipeType] || '').trim().toUpperCase() || (isSewerRow ? 'VCP' : 'RCP');
 
   if (isSewerRow) {
     const sewBuilt = buildSewerageCadString(
@@ -243,6 +297,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       settings
     );
     const visualLines = sewBuilt.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
+    const hydraulics = computePipeHydraulics(sizeRaw, gradRaw, matRaw, true);
     const qaWarnings = evaluateQaWarnings({
       isSewerRow: true,
       gl: sewBuilt.glDisplay,
@@ -254,6 +309,9 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       ilDown: ilDownRaw,
       bd: bdRaw,
       grad: gradRaw,
+      size: sizeRaw,
+      mat: matRaw,
+      settings,
     });
     return {
       id: effectiveId,
@@ -264,6 +322,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       effectiveIL,
       maxIL: maxCandidateIL,
       qaWarnings,
+      hydraulics,
       drainDetails: { size: sizeRaw, length: lengthRaw, gradient: gradRaw, il: !isNaN(effectiveIL) ? effectiveIL.toFixed(2) : '' },
       sewerDetails: { gl: sewBuilt.glDisplay, il: sewBuilt.ilDisplay, depth: sewBuilt.depthDisplay },
       rawRow: row,
@@ -271,6 +330,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
   } else {
     const drnBuilt = buildDrainageCadString(effectiveId, sizeRaw, lengthRaw, gradRaw, settings);
     const visualLines = drnBuilt.cadString.replace(/^\{\\W[\d.]+;/, '').replace(/\}$/, '').replace(/%%c/g, 'Ø').split('\\P');
+    const hydraulics = computePipeHydraulics(drnBuilt.sizeDisplay, drnBuilt.gradDisplay, matRaw, false);
     const qaWarnings = evaluateQaWarnings({
       isSewerRow: false,
       gl: glRaw,
@@ -280,6 +340,9 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       ilDown: ilDownRaw,
       bd: bdRaw,
       grad: drnBuilt.gradDisplay,
+      size: drnBuilt.sizeDisplay,
+      mat: matRaw,
+      settings,
     });
     return {
       id: effectiveId,
@@ -290,6 +353,7 @@ function formatCadRow(row, { effectiveMode, columnMap, columns, settings }) {
       effectiveIL,
       maxIL: maxCandidateIL,
       qaWarnings,
+      hydraulics,
       drainDetails: {
         size: drnBuilt.sizeDisplay,
         length: drnBuilt.lenDisplay,
@@ -367,6 +431,8 @@ function processAndDeduplicateRows(rawRows, { effectiveMode, columnMap, columns,
             ilIn: isFinite(combinedMaxIL) ? combinedMaxIL : NaN,
             ilOut: newIL,
             grad: item.drainDetails.gradient || existing.drainDetails.gradient,
+            size: item.drainDetails.size || existing.drainDetails.size,
+            settings,
           });
           const allWarnings = Array.from(new Set([...mergedWarnings.filter(w => !w.startsWith('Shallow Depth')), ...recomputedWarnings]));
           const updatedItem = {
@@ -656,15 +722,20 @@ function buildSewSections(rawRows, { columnMap, columns, settings }) {
   }
 
   return allSections.map((nodes, idx) => {
+    const cfg = settings || DEFAULT_SETTINGS;
+    const minCover = parseFloat(cfg.minCoverDepth) || 1.2;
+    const minVel = parseFloat(cfg.minSewerVelocity) || 0.8;
+    const maxVel = parseFloat(cfg.maxPipeVelocity) || 4.0;
+
     nodes.forEach((node, nIdx) => {
       const nodeWarnings = [];
       const spanWarnings = [];
       const nodeDepth = node.gl - node.ilOut;
       const nodeDrop = node.ilIn - node.ilOut;
 
-      // 1. Shallow depth (< 1.2m)
-      if (!isNaN(nodeDepth) && nodeDepth > 0 && nodeDepth < 1.2) {
-        nodeWarnings.push(`Shallow Depth (${nodeDepth.toFixed(2)}m < 1.20m)`);
+      // 1. Shallow depth (< minCoverDepth, default 1.2m)
+      if (!isNaN(nodeDepth) && nodeDepth > 0 && nodeDepth < minCover) {
+        nodeWarnings.push(`Shallow Depth (${nodeDepth.toFixed(2)}m < ${minCover.toFixed(2)}m)`);
       }
 
       // 2. Backdrop manhole requirement (ilIn - ilOut >= 0.60m)
@@ -695,6 +766,35 @@ function buildSewSections(rawRows, { columnMap, columns, settings }) {
             spanWarnings.push(flMsg);
           }
         }
+
+        // 5. Manning's Full-Bore Velocity & Capacity (SPAN MSIG Self-Cleansing & Scouring Check)
+        const hyd = computePipeHydraulics(node.size, node.grad, node.mat, true);
+        node.hydraulics = hyd;
+        if (hyd) {
+          if (hyd.velocityMs < minVel - 1e-4) {
+            const vMsg = `Low Velocity (${hyd.velocityMs.toFixed(2)}m/s < ${minVel.toFixed(2)}m/s)`;
+            nodeWarnings.push(vMsg);
+            spanWarnings.push(vMsg);
+          } else if (hyd.velocityMs > maxVel + 1e-4) {
+            const vMsg = `Scouring Velocity (${hyd.velocityMs.toFixed(2)}m/s > ${maxVel.toFixed(2)}m/s)`;
+            nodeWarnings.push(vMsg);
+            spanWarnings.push(vMsg);
+          }
+        }
+
+        // 6. Non-Decreasing Downstream Pipe Diameter Check (SPAN MSIG)
+        if (nIdx > 0) {
+          const prevNode = nodes[nIdx - 1];
+          const prevDia = parseFloat(prevNode.size);
+          const currDia = parseFloat(node.size);
+          if (!isNaN(prevDia) && !isNaN(currDia) && currDia > 0 && currDia < prevDia) {
+            const diaMsg = `Dia Reduction (${Math.round(prevDia)}Ø → ${Math.round(currDia)}Ø)`;
+            nodeWarnings.push(diaMsg);
+            spanWarnings.push(diaMsg);
+          }
+        }
+      } else {
+        node.hydraulics = null;
       }
 
       node.qaWarnings = nodeWarnings;
@@ -765,6 +865,7 @@ function computeCadStats(processedRows, sewSections) {
 window.buildDrainageCadString = buildDrainageCadString;
 window.buildSewerageCadString = buildSewerageCadString;
 window.normalizeCadId = normalizeCadId;
+window.computePipeHydraulics = computePipeHydraulics;
 window.evaluateQaWarnings = evaluateQaWarnings;
 window.formatCadRow = formatCadRow;
 window.processAndDeduplicateRows = processAndDeduplicateRows;

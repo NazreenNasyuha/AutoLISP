@@ -1,8 +1,8 @@
 (vl-load-com)
 
-(defun c:csvupdate ( / *error* oldCmd oldDimZin
+(defun c:csvupdate ( / *error* oldCmd oldDimZin undoStarted
                        errBoxSize errBoxWidth errBoxColor dupBoxColor zoomHeight
-                       split-csv normalize-id split-mtext join-str-list
+                       esc-filter fmt-2dec split-csv normalize-id split-mtext join-str-list
                        get-text put-text is-sewer-mh-p pick-target-text get-box-center draw-qa-box
                        filename file line cols id searchId val1 val2 val3 category csvMode
                        dict csvDupIds totalCsvRows csvIdList matchedCsvIds unmatchedCsvIds csvEntry
@@ -26,6 +26,7 @@
   (setq oldDimZin (getvar "DIMZIN"))
 
   (defun *error* (msg)
+    (if undoStarted (progn (command "_.UNDO" "_End") (setq undoStarted nil)))
     (if oldCmd (setvar "CMDECHO" oldCmd))
     (if oldDimZin (setvar "DIMZIN" oldDimZin))
     (if file (progn (close file) (setq file nil)))
@@ -33,6 +34,52 @@
       (princ (strcat "\n[CSVUPDATE Error]: " msg))
     )
     (princ)
+  )
+
+  ;; -------------------------------------------------------------------------
+  ;; 0. STANDARDS-COMPLIANT WILDCARD ESCAPER (Rule #1) & DECIMAL FORMATTER (Rule #4)
+  ;; -------------------------------------------------------------------------
+  (defun esc-filter (str / idx ch out)
+    (if (fboundp 'jrk:esc-filter)
+      (jrk:esc-filter str)
+      (progn
+        (setq out "" idx 1)
+        (if str
+          (while (<= idx (strlen str))
+            (setq ch (substr str idx 1))
+            (if (wcmatch ch "[#*?@.~`[\\],`]")
+              (setq out (strcat out "`" ch))
+              (setq out (strcat out ch))
+            )
+            (setq idx (1+ idx))
+          )
+        )
+        out
+      )
+    )
+  )
+
+  (defun fmt-2dec (val / s dotPos fracLen)
+    (if (fboundp 'jrk:fmt-2dec)
+      (jrk:fmt-2dec val)
+      (progn
+        (setq s (rtos val 2 2)
+              dotPos (vl-string-search "." s)
+        )
+        (if (null dotPos)
+          (strcat s ".00")
+          (progn
+            (setq fracLen (- (strlen s) dotPos 1))
+            (while (< fracLen 2)
+              (setq s (strcat s "0")
+                    fracLen (1+ fracLen)
+              )
+            )
+            s
+          )
+        )
+      )
+    )
   )
 
   ;; -------------------------------------------------------------------------
@@ -114,82 +161,151 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 4. AUTOCAD-SAFE UNIVERSAL TEXT READER & WRITER
+  ;; 4. AUTOCAD-SAFE 3-LAYER TEXT READER & WRITER (Rule #2)
   ;; -------------------------------------------------------------------------
   (defun get-text (ent / elist typ obj res item)
-    (setq elist (entget ent) typ (cdr (assoc 0 elist)) res nil)
-
-    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
-    (if (and obj (not (vl-catch-all-error-p obj)))
-      (setq res (vl-catch-all-apply 'vlax-get-property (list obj 'TextString)))
-    )
-
-    (if (or (null res) (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
-      (cond
-        ((= typ "MULTILEADER")
-         (setq res "")
-         (foreach item elist
-           (if (and (= (car item) 304)
-                    (/= (strcase (cdr item)) "LEADER_LINE{")
-                    (= res ""))
-             (setq res (cdr item))
-           )
-         ))
-        ((= typ "MTEXT")
-         (setq res "")
-         (foreach item elist
-           (if (or (= (car item) 3) (= (car item) 1))
-             (setq res (strcat res (cdr item)))
-           )
-         ))
-        (T
-         (setq res (cdr (assoc 1 elist))))
+    (if (fboundp 'jrk:get-text)
+      (jrk:get-text ent)
+      (progn
+        (setq elist (entget ent) typ (cdr (assoc 0 elist)) res nil)
+        ;; Layer 1: Modern Property Engine
+        (if (and (null res) (fboundp 'getpropertyvalue))
+          (progn
+            (setq res
+              (cond
+                ((= typ "MULTILEADER") (vl-catch-all-apply 'getpropertyvalue (list ent "MText/Contents")))
+                ((= typ "MTEXT")       (vl-catch-all-apply 'getpropertyvalue (list ent "Contents")))
+                ((= typ "TEXT")        (vl-catch-all-apply 'getpropertyvalue (list ent "TextString")))
+                (t nil)
+              )
+            )
+            (if (or (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
+              (setq res nil)
+            )
+          )
+        )
+        ;; Layer 2: ActiveX VLA COM Fallback
+        (if (null res)
+          (progn
+            (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
+            (if (and obj (not (vl-catch-all-error-p obj)))
+              (setq res (vl-catch-all-apply 'vlax-get-property (list obj 'TextString)))
+            )
+            (if (or (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
+              (setq res nil)
+            )
+          )
+        )
+        ;; Layer 3: Pure DXF Fallback
+        (if (null res)
+          (cond
+            ((= typ "MULTILEADER")
+             (setq res "")
+             (foreach item elist
+               (if (and (= (car item) 304)
+                        (/= (strcase (cdr item)) "LEADER_LINE{")
+                        (= res ""))
+                 (setq res (cdr item))
+               )
+             ))
+            ((= typ "MTEXT")
+             (setq res "")
+             (foreach item elist
+               (if (or (= (car item) 3) (= (car item) 1))
+                 (setq res (strcat res (cdr item)))
+               )
+             ))
+            (T
+             (setq res (cdr (assoc 1 elist))))
+          )
+        )
+        (if (and res (= (type res) 'STR)) res "")
       )
     )
-    (if (and res (= (type res) 'STR)) res "")
   )
 
-  (defun put-text (ent newTxt / elist typ newElist replaced obj)
-    (setq elist (entget ent) typ (cdr (assoc 0 elist)))
-    (cond
-      ((= typ "MULTILEADER")
-       (setq newElist nil replaced nil)
-       (foreach item elist
-         (if (and (not replaced)
-                  (= (car item) 304)
-                  (/= (strcase (cdr item)) "LEADER_LINE{"))
-           (progn
-             (setq newElist (cons (cons 304 newTxt) newElist))
-             (setq replaced T)
-           )
-           (setq newElist (cons item newElist))
-         )
-       )
-       (entmod (reverse newElist)))
-
-      ((= typ "MTEXT")
-       (setq newElist nil)
-       (foreach item elist
-         (if (/= (car item) 3)
-           (if (= (car item) 1)
-             (setq newElist (cons (cons 1 newTxt) newElist))
-             (setq newElist (cons item newElist))
-           )
-         )
-       )
-       (entmod (reverse newElist)))
-
-      (T
-       (if (assoc 1 elist)
-         (entmod (subst (cons 1 newTxt) (assoc 1 elist) elist))
-       ))
-    )
-
-    (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
-    (if (and obj (not (vl-catch-all-error-p obj)))
+  (defun put-text (ent newTxt / elist typ ok res newElist replaced obj)
+    (if (fboundp 'jrk:put-text)
+      (jrk:put-text ent newTxt)
       (progn
-        (vl-catch-all-apply 'vlax-put-property (list obj 'TextString newTxt))
-        (vl-catch-all-apply 'vla-update (list obj))
+        (setq elist (entget ent) typ (cdr (assoc 0 elist)) ok nil)
+        ;; Layer 1: Modern Property Engine
+        (if (and (not ok) (fboundp 'setpropertyvalue))
+          (progn
+            (setq res
+              (cond
+                ((= typ "MULTILEADER") (vl-catch-all-apply 'setpropertyvalue (list ent "MText/Contents" newTxt)))
+                ((= typ "MTEXT")       (vl-catch-all-apply 'setpropertyvalue (list ent "Contents" newTxt)))
+                ((= typ "TEXT")        (vl-catch-all-apply 'setpropertyvalue (list ent "TextString" newTxt)))
+                (t nil)
+              )
+            )
+            (if (and (not (vl-catch-all-error-p res)) (= (get-text ent) newTxt))
+              (setq ok T)
+            )
+          )
+        )
+        ;; Layer 2: ActiveX VLA COM Fallback
+        (if (not ok)
+          (progn
+            (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
+            (if (and obj (not (vl-catch-all-error-p obj)))
+              (progn
+                (setq res (vl-catch-all-apply 'vlax-put-property (list obj 'TextString newTxt)))
+                (if (not (vl-catch-all-error-p res))
+                  (progn
+                    (vl-catch-all-apply 'vla-update (list obj))
+                    (if (= (get-text ent) newTxt)
+                      (setq ok T)
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+        ;; Layer 3: Pure DXF Fallback
+        (if (not ok)
+          (cond
+            ((= typ "MULTILEADER")
+             (setq newElist nil replaced nil)
+             (foreach item elist
+               (if (and (not replaced)
+                        (= (car item) 304)
+                        (/= (strcase (cdr item)) "LEADER_LINE{"))
+                 (progn
+                   (setq newElist (cons (cons 304 newTxt) newElist))
+                   (setq replaced T)
+                 )
+                 (setq newElist (cons item newElist))
+               )
+             )
+             (entmod (reverse newElist))
+             (entupd ent))
+
+            ((= typ "MTEXT")
+             (setq newElist nil)
+             (foreach item elist
+               (if (/= (car item) 3)
+                 (if (= (car item) 1)
+                   (setq newElist (cons (cons 1 newTxt) newElist))
+                   (setq newElist (cons item newElist))
+                 )
+               )
+             )
+             (entmod (reverse newElist))
+             (entupd ent))
+
+            (T
+             (if (assoc 1 elist)
+               (progn
+                 (entmod (subst (cons 1 newTxt) (assoc 1 elist) elist))
+                 (entupd ent)
+               )
+             ))
+          )
+        )
+        (entupd ent)
       )
     )
   )
@@ -201,22 +317,40 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 5. QA/QC BOX GENERATOR (Red for Missing, Blue for Duplicate)
+  ;; 5. QA/QC BOX GENERATOR (Red for Missing, Blue for Duplicate — Rule #5 WCS)
   ;; -------------------------------------------------------------------------
-  (defun get-box-center (elist entType / p)
+  (defun get-box-center (ent elist entType / vla minPt maxPt pMin pMax p)
     (setq p nil)
-    (if (= entType "MULTILEADER")
-      (setq p (cdr (assoc 12 elist)))
+    (setq vla (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
+    (if (and vla (not (vl-catch-all-error-p vla))
+             (not (vl-catch-all-error-p (vl-catch-all-apply 'vla-getboundingbox (list vla 'minPt 'maxPt)))))
+      (progn
+        (setq pMin (vlax-safearray->list minPt)
+              pMax (vlax-safearray->list maxPt)
+              p    (list (/ (+ (car pMin) (car pMax)) 2.0)
+                         (/ (+ (cadr pMin) (cadr pMax)) 2.0)
+                         0.0)
+        )
+      )
     )
     (if (null p)
-      (setq p (cdr (assoc 10 elist)))
+      (progn
+        (if (= entType "MULTILEADER")
+          (setq p (cdr (assoc 12 elist)))
+        )
+        (if (null p)
+          (setq p (cdr (assoc 10 elist)))
+        )
+        (if p
+          (setq p (trans p ent 0))
+          (setq p '(0.0 0.0 0.0))
+        )
+        (setq p (list (+ (car p) (* errBoxSize 0.25))
+                      (- (cadr p) (* errBoxSize 0.25))
+                      0.0))
+      )
     )
-    (if (null p)
-      (setq p '(0.0 0.0 0.0))
-    )
-    (list (+ (car p) (* errBoxSize 0.25))
-          (- (cadr p) (* errBoxSize 0.25))
-          0.0)
+    p
   )
 
   (defun draw-qa-box (pt rad col lay / p1 p2 p3 p4)
@@ -357,13 +491,16 @@
     )
   )
 
-  (setq ss (ssget "_X" '((0 . "TEXT,MTEXT,MULTILEADER"))))
+  (setq ss (ssget "_X" (list '(0 . "TEXT,MTEXT,MULTILEADER")
+                             (cons 8 (esc-filter refLayer)))))
 
   ;; =========================================================================
   ;; STEP 3: PRE-SCAN FOR DUPLICATE IDs IN CAD & INJECT DATA
   ;; =========================================================================
   (if ss
     (progn
+      (command "_.UNDO" "_Begin")
+      (setq undoStarted T)
       (setq count (sslength ss) i 0 cadIdCounts nil)
 
       ;; PASS 1: Count how many times each ID appears on the target layer in CAD
@@ -416,7 +553,7 @@
             (if (and (= csvMode "SEWERAGE") (not (is-sewer-mh-p oldTxt displayId)) (null match))
               (setq skipped (1+ skipped))
               (progn
-                (setq pt (get-box-center elist entType))
+                (setq pt (get-box-center ent elist entType))
                 (setq hgt (if (= entType "MULTILEADER") (cdr (assoc 140 elist)) (cdr (assoc 40 elist))))
                 (setq boxRad (if (and hgt (> (* hgt 4.0) errBoxSize)) (* hgt 4.0) errBoxSize))
 
@@ -459,9 +596,9 @@
                        (setq newTxt val1))
 
                       ((= category "SEWERAGE")
-                       (setq glStr (rtos (atof val1) 2 2)
-                             ilStr (rtos (atof val2) 2 2)
-                             dStr  (rtos (atof val3) 2 2))
+                       (setq glStr (fmt-2dec (atof val1))
+                             ilStr (fmt-2dec (atof val2))
+                             dStr  (fmt-2dec (atof val3)))
                        (setq newTxt (strcat stylePrefix displayId "\\PGL=" glStr "\\PIL=" ilStr "\\PD=" dStr closeBraces)))
 
                       (T
@@ -557,6 +694,7 @@
                      "\n\n(Full QA/QC Audit Report printed to Command Line - Press F2 to view)"
                      (if zoomTarget "\nClick OK to jump directly to the first flagged box." "")))
 
+      (if undoStarted (progn (command "_.UNDO" "_End") (setq undoStarted nil)))
       (if zoomTarget
         (command "_.ZOOM" "_C" (trans zoomTarget 0 1) zoomHeight)
       )

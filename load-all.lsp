@@ -3,7 +3,7 @@
 ;;; MODULE      : load-all.lsp
 ;;; COMMAND     : LOADALL
 ;;; DESCRIPTION : Dynamic Folder-Scanning Master Loader & Command Directory
-;;;               (Auto-loads ALL *.lsp files in folder + 19-Module Fallback)
+;;;               (Auto-loads jrk-core.lsp + ALL 25 *.lsp Command Modules)
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD, BricsCAD)
 ;;; ==========================================================================
@@ -80,23 +80,35 @@
   ;; =========================================================================
   (setq rawFiles (if (/= dir "") (vl-directory-files dir "*.lsp" 1) nil))
 
-  ;; Exclude load-all.lsp itself so it never loops recursively
+  ;; Exclude load-all.lsp itself and ensure jrk-core.lsp is always loaded FIRST
   (if rawFiles
-    (setq files
-      (vl-sort
-        (vl-remove-if '(lambda (x) (= (strcase x) "LOAD-ALL.LSP")) rawFiles)
-        '<
+    (progn
+      (setq files
+        (vl-sort
+          (vl-remove-if
+            '(lambda (x)
+               (or (= (strcase x) "LOAD-ALL.LSP")
+                   (= (strcase x) "JRK-CORE.LSP")))
+            rawFiles)
+          '<
+        )
+      )
+      (if (member "JRK-CORE.LSP" (mapcar 'strcase rawFiles))
+        (setq files (cons "jrk-core.lsp" files))
       )
     )
   )
 
-  ;; Fallback list (All 19 scripts from your folder) if CAD Support Path is used without dir
+  ;; Fallback list (Shared Core Kernel + All 25 Command Modules) if CAD Support Path is used without dir
   (if (null files)
     (setq files '(
+      "jrk-core.lsp"
       "catchmentarea.lsp"
+      "csvextract.lsp"
       "csvupdate.lsp"
       "epalink.lsp"
       "epanode.lsp"
+      "ewfill.lsp"
       "getallaream.lsp"
       "getarea.lsp"
       "getareaacre.lsp"
@@ -105,11 +117,15 @@
       "getlength.lsp"
       "guidemiddle.lsp"
       "guideoffset.lsp"
+      "mathsim.lsp"
       "pipec.lsp"
       "pipechouse.lsp"
       "r180.lsp"
       "repsim.lsp"
+      "roadsec.lsp"
       "sewpipec.lsp"
+      "sewsection.lsp"
+      "tbox.lsp"
       "torient.lsp"
       "tseq.lsp"
     ))
@@ -137,7 +153,7 @@
   (setvar "CMDECHO" (if oldCmd oldCmd 1))
 
   ;; =========================================================================
-  ;; 4. SUMMARY BANNER & COMPLETE 19-COMMAND DIRECTORY
+  ;; 4. SUMMARY BANNER & COMPLETE 25-COMMAND DIRECTORY
   ;; =========================================================================
   (princ "\n================================================================")
   (princ "\n   CIVIL & INFRASTRUCTURE AUTOLISP AUTOMATION SUITE LOADED      ")
@@ -151,9 +167,11 @@
   (princ "\n  COMMAND        DESCRIPTION")
   (princ "\n  ------------   -----------------------------------------------")
   (princ "\n  CATCHMENTAREA  4-corner house/road catchment divider with ridge")
+  (princ "\n  CSVEXTRACT     Round-trip CAD callout to Web Bridge CSV exporter")
   (princ "\n  CSVUPDATE      Smart Excel CSV injector (Red Missing / Blue Dup)")
   (princ "\n  EPALINK        Auto-label & update EPANET pipes (Hex + L/Q/Vs/HL)")
   (princ "\n  EPANODE        Auto-label & update EPANET nodes (HSL, Q, RP)")
+  (princ "\n  EWFILL         Earthworks cut/fill hatch & slope tadpole generator")
   (princ "\n  GETALLAREAM    Batch sum multiple polylines into total m2 + label")
   (princ "\n  GETAREA        Extract polyline area (mm2 / m2 / ha / acres)")
   (princ "\n  GETAREAACRE    Extract polyline area in acres (ac) + centroid text")
@@ -162,11 +180,15 @@
   (princ "\n  GETLENGTH      Cumulative path distance measurement to clipboard")
   (princ "\n  GUIDEMIDDLE    4-corner road centerline generator with extension")
   (princ "\n  GUIDEOFFSET    Trace closed boundary and generate offset guide")
+  (princ "\n  MATHSIM        In-place numerical math & level delta adjuster")
   (princ "\n  PIPEC          Road drain generator with sumps & SIL00.00 MLeader")
   (princ "\n  PIPECHOUSE     Residential drain generator with live 30m ruler")
   (princ "\n  R180           Universal 180-deg true-middle flipper (1-click/multi)")
   (princ "\n  REPSIM         Replace similar text + Canva/Word Style Painter")
+  (princ "\n  ROADSEC        Parametric JKR/MSMA road cross-section generator")
   (princ "\n  SEWPIPEC       Sewer network generator with manholes & MH MLeader")
+  (princ "\n  SEWSECTION     Sewer longitudinal profile & schedule generator")
+  (princ "\n  TBOX           Dynamic text/MText frame & callout box generator")
   (princ "\n  TORIENT        Universal orientation tool (Blocks/MText/Text/Lines)")
   (princ "\n  TSEQ           Smart discipline-aware ID sequencer (Drains & MHs)")
   (princ "\n================================================================")

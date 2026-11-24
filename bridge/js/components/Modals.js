@@ -70,6 +70,54 @@ function SettingsModal({ isOpen, onClose, settings, setSettings, showToast }) {
           </div>
 
           <div className="pt-2 border-t border-cadslate-800 space-y-3">
+            <div className="font-bold text-amber-400 uppercase tracking-wider text-[11px]">
+              SPAN MSIG &amp; MSMA Hydraulic QA/QC Thresholds
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Min Sewer Cover (m)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={settings.minCoverDepth}
+                  onChange={(e) => setSettings({ ...settings, minCoverDepth: parseFloat(e.target.value) || 1.2 })}
+                  className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Min Sewer Vel (m/s)</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={settings.minSewerVelocity}
+                  onChange={(e) => setSettings({ ...settings, minSewerVelocity: parseFloat(e.target.value) || 0.8 })}
+                  className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Min Drain Vel (m/s)</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={settings.minDrainVelocity}
+                  onChange={(e) => setSettings({ ...settings, minDrainVelocity: parseFloat(e.target.value) || 0.6 })}
+                  className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Max Scour Vel (m/s)</label>
+                <input
+                  type="number"
+                  step="0.25"
+                  value={settings.maxPipeVelocity}
+                  onChange={(e) => setSettings({ ...settings, maxPipeVelocity: parseFloat(e.target.value) || 4.0 })}
+                  className="w-full bg-cadslate-950 border border-cadslate-700 rounded-lg p-2 text-white font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-cadslate-800 space-y-3">
             <div className="font-bold text-cadcyan-400 uppercase tracking-wider text-[11px]">
               SEWSECTION Longitudinal Profile Defaults
             </div>
@@ -232,6 +280,13 @@ function GuideModal({ isOpen, onClose }) {
               <code className="text-white">1:1000</code> Hor,{' '}
               <code className="text-white">1:200 / 1:500 / 1:1000</code> Ver), select{' '}
               <code className="text-cadcyan-400">AutoCAD_SewSection.csv</code>, and click an insertion point!
+            </p>
+          </div>
+          <div className="p-3 rounded-lg bg-cadslate-950 border border-cadslate-800">
+            <div className="font-bold text-emerald-400 mb-1">Workflow C: Round-Trip CAD-to-Bridge Extraction (CSVEXTRACT)</div>
+            <p className="text-slate-400">
+              1. In AutoCAD / GstarCAD, run <code className="text-emerald-400">CSVEXTRACT</code> and select existing drainage or sewerage text/MLeader callouts.<br />
+              2. Save the extracted schedule CSV and drag it directly into this Web Bridge to audit hydraulic velocities, fix backfalls, and re-export for <code className="text-cadcyan-400">CSVUPDATE</code>!
             </p>
           </div>
         </div>

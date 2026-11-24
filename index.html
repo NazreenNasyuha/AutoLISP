@@ -17,11 +17,11 @@
   <!-- Application Stylesheet -->
   <link rel="stylesheet" href="./bridge/css/styles.css">
 
-  <!-- External Libraries: SheetJS (xlsx), React 18, ReactDOM 18 & Babel Standalone -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- External Libraries: SheetJS (xlsx v0.20.3 - patched for CVE-2023-30533 & CVE-2024-22363), React 18.3.1, ReactDOM 18.3.1 & Babel Standalone 7.26.3 -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.3/babel.min.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-cadslate-950 text-slate-100 font-sans min-h-screen flex flex-col selection:bg-cadcyan-500 selection:text-black transition-colors duration-200">
 

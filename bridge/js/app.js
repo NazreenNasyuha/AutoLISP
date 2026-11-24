@@ -32,13 +32,13 @@ function App() {
   const [targetTool, setTargetTool] = useState('CSVUPDATE');
   const [activeSecIdx, setActiveSecIdx] = useState(0);
 
-  // 2. Settings state
+  // 2. Settings state (validated via sanitizeSettings against localStorage tampering)
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+      return saved ? sanitizeSettings(JSON.parse(saved)) : { ...DEFAULT_SETTINGS };
     } catch (e) {
-      return DEFAULT_SETTINGS;
+      return { ...DEFAULT_SETTINGS };
     }
   });
 
@@ -338,6 +338,7 @@ function App() {
           setSearchTerm={setSearchTerm}
           copyEntireCSV={() => copyAllRowsToClipboard(processedRows, showToast)}
           copySingleString={(str) => copyTextToClipboard(str, showToast)}
+          exportQaReport={() => exportQaReportCSV(processedRows, sewSections, targetTool, showToast)}
         />
       </main>
 
@@ -351,6 +352,7 @@ function App() {
         exportSewSectionCSV={() => exportSewSectionCSVFile(sewSections, showToast)}
         exportMtextCSV={() => exportMtextCSVFile(processedRows, showToast)}
         exportCSV={() => exportRawCSV(processedRows, showToast)}
+        exportQaReport={() => exportQaReportCSV(processedRows, sewSections, targetTool, showToast)}
       />
 
       <SettingsModal
