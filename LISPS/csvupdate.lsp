@@ -22,11 +22,20 @@
   (setq zoomHeight  35000.0) ;; Camera zoom view height when jumping to an error
   ;; =========================================================================
 
-  (setq oldCmd (getvar "CMDECHO"))
-  (setq oldDimZin (getvar "DIMZIN"))
+  (setq oldCmd      (getvar "CMDECHO")
+        oldDimZin   (getvar "DIMZIN")
+        undoStarted nil)
 
   (defun *error* (msg)
-    (if undoStarted (progn (command "_.UNDO" "_End") (setq undoStarted nil)))
+    (if undoStarted
+      (progn
+        (if (boundp 'command-s)
+          (vl-catch-all-apply 'command-s (list "_.UNDO" "_End"))
+          (vl-catch-all-apply 'command (list "_.UNDO" "_End"))
+        )
+        (setq undoStarted nil)
+      )
+    )
     (if oldCmd (setvar "CMDECHO" oldCmd))
     (if oldDimZin (setvar "DIMZIN" oldDimZin))
     (if file (progn (close file) (setq file nil)))
@@ -37,17 +46,17 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 0. STANDARDS-COMPLIANT WILDCARD ESCAPER (Rule #1) & DECIMAL FORMATTER (Rule #4)
+  ;; 0. STANDARDS-COMPLIANT WILDCARD ESCAPER & DECIMAL FORMATTER
   ;; -------------------------------------------------------------------------
   (defun esc-filter (str / idx ch out)
-    (if (fboundp 'jrk:esc-filter)
+    (if (boundp 'jrk:esc-filter)
       (jrk:esc-filter str)
       (progn
         (setq out "" idx 1)
         (if str
           (while (<= idx (strlen str))
             (setq ch (substr str idx 1))
-            (if (wcmatch ch "[#*?@.~`[\\],`]")
+            (if (member ch '("`" "*" "?" "#" "@" "." "~" "[" "]" ","))
               (setq out (strcat out "`" ch))
               (setq out (strcat out ch))
             )
@@ -60,12 +69,18 @@
   )
 
   (defun fmt-2dec (val / s dotPos fracLen)
-    (if (fboundp 'jrk:fmt-2dec)
+    (if (boundp 'jrk:fmt-2dec)
       (jrk:fmt-2dec val)
       (progn
-        (setq s (rtos val 2 2)
-              dotPos (vl-string-search "." s)
+        (setvar "DIMZIN" 0)
+        (setq s (rtos val 2 2))
+        (if (= (substr s 1 1) ".")
+          (setq s (strcat "0" s))
         )
+        (if (= (substr s 1 2) "-.")
+          (setq s (strcat "-0." (substr s 3)))
+        )
+        (setq dotPos (vl-string-search "." s))
         (if (null dotPos)
           (strcat s ".00")
           (progn
@@ -161,22 +176,22 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 4. AUTOCAD-SAFE 3-LAYER TEXT READER & WRITER (Rule #2)
+  ;; 4. AUTOCAD-SAFE 3-LAYER TEXT READER & WRITER
   ;; -------------------------------------------------------------------------
   (defun get-text (ent / elist typ obj res item)
-    (if (fboundp 'jrk:get-text)
+    (if (boundp 'jrk:get-text)
       (jrk:get-text ent)
       (progn
         (setq elist (entget ent) typ (cdr (assoc 0 elist)) res nil)
         ;; Layer 1: Modern Property Engine
-        (if (and (null res) (fboundp 'getpropertyvalue))
+        (if (and (null res) (boundp 'getpropertyvalue))
           (progn
             (setq res
               (cond
                 ((= typ "MULTILEADER") (vl-catch-all-apply 'getpropertyvalue (list ent "MText/Contents")))
                 ((= typ "MTEXT")       (vl-catch-all-apply 'getpropertyvalue (list ent "Contents")))
                 ((= typ "TEXT")        (vl-catch-all-apply 'getpropertyvalue (list ent "TextString")))
-                (t nil)
+                (T nil)
               )
             )
             (if (or (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
@@ -225,19 +240,19 @@
   )
 
   (defun put-text (ent newTxt / elist typ ok res newElist replaced obj)
-    (if (fboundp 'jrk:put-text)
+    (if (boundp 'jrk:put-text)
       (jrk:put-text ent newTxt)
       (progn
         (setq elist (entget ent) typ (cdr (assoc 0 elist)) ok nil)
         ;; Layer 1: Modern Property Engine
-        (if (and (not ok) (fboundp 'setpropertyvalue))
+        (if (and (not ok) (boundp 'setpropertyvalue))
           (progn
             (setq res
               (cond
                 ((= typ "MULTILEADER") (vl-catch-all-apply 'setpropertyvalue (list ent "MText/Contents" newTxt)))
                 ((= typ "MTEXT")       (vl-catch-all-apply 'setpropertyvalue (list ent "Contents" newTxt)))
                 ((= typ "TEXT")        (vl-catch-all-apply 'setpropertyvalue (list ent "TextString" newTxt)))
-                (t nil)
+                (T nil)
               )
             )
             (if (and (not (vl-catch-all-error-p res)) (= (get-text ent) newTxt))
@@ -317,19 +332,22 @@
   )
 
   ;; -------------------------------------------------------------------------
-  ;; 5. QA/QC BOX GENERATOR (Red for Missing, Blue for Duplicate — Rule #5 WCS)
+  ;; 5. QA/QC BOX GENERATOR (Red for Missing, Blue for Duplicate — WCS)
   ;; -------------------------------------------------------------------------
-  (defun get-box-center (ent elist entType / vla minPt maxPt pMin pMax p)
-    (setq p nil)
+  (defun get-box-center (ent elist entType / vla pMin pMax p)
+    (setq p nil *csvu_min* nil *csvu_max* nil)
     (setq vla (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
     (if (and vla (not (vl-catch-all-error-p vla))
-             (not (vl-catch-all-error-p (vl-catch-all-apply 'vla-getboundingbox (list vla 'minPt 'maxPt)))))
+             (not (vl-catch-all-error-p
+                    (vl-catch-all-apply '(lambda () (vla-getboundingbox vla '*csvu_min* '*csvu_max*)))))
+             *csvu_min* *csvu_max*)
       (progn
-        (setq pMin (vlax-safearray->list minPt)
-              pMax (vlax-safearray->list maxPt)
-              p    (list (/ (+ (car pMin) (car pMax)) 2.0)
-                         (/ (+ (cadr pMin) (cadr pMax)) 2.0)
-                         0.0)
+        (setq pMin (vl-catch-all-apply 'vlax-safearray->list (list *csvu_min*))
+              pMax (vl-catch-all-apply 'vlax-safearray->list (list *csvu_max*)))
+        (if (and (listp pMin) (listp pMax))
+          (setq p (list (/ (+ (car pMin) (car pMax)) 2.0)
+                        (/ (+ (cadr pMin) (cadr pMax)) 2.0)
+                        0.0))
         )
       )
     )
@@ -402,7 +420,7 @@
     )
   )
 
-  (princ "\nCommand: CSVUPDATE v3.3 (QA/QC Audit Report + Red/Blue Box Edition)")
+  (princ "\nCommand: CSVUPDATE v3.4 (QA/QC Audit Report + Red/Blue Box Edition)")
   (setvar "CMDECHO" 0)
 
   ;; =========================================================================
@@ -436,7 +454,6 @@
            (if (and (/= searchId "") (/= (strcase id) "ID"))
              (progn
                (setq totalCsvRows (1+ totalCsvRows))
-               ;; Check if this ID already exists in the CSV file
                (if (assoc searchId dict)
                  (if (not (member searchId csvDupIds))
                    (setq csvDupIds (cons searchId csvDupIds))
@@ -645,7 +662,7 @@
 
       ;; Print Full QA/QC Audit Report in AutoCAD Command Line
       (princ "\n================================================================")
-      (princ "\n          CSVUPDATE v3.3 — QA/QC ENGINEERING AUDIT REPORT       ")
+      (princ "\n          CSVUPDATE v3.4 — QA/QC ENGINEERING AUDIT REPORT       ")
       (princ "\n================================================================")
       (princ (strcat "\n  Target CAD Layer            : " refLayer))
       (princ (strcat "\n  Discipline Mode             : " csvMode))
@@ -676,7 +693,7 @@
       ;; Choose zoom target (prioritize Missing Red Box, then Duplicate Blue Box)
       (setq zoomTarget (if errorPt errorPt dupPt))
 
-      (alert (strcat "CSV DATA INJECTION COMPLETE (v3.3)\n\n"
+      (alert (strcat "CSV DATA INJECTION COMPLETE (v3.4)\n\n"
                      "Target Layer: " refLayer "\n"
                      "Mode: " csvMode "\n\n"
                      "1. Total CSV Rows vs. Matched in CAD:\n"

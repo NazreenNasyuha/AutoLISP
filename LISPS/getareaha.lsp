@@ -2,47 +2,14 @@
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
 ;;; MODULE      : getareaha.lsp
 ;;; COMMAND     : GETAREAHA
-;;; DESCRIPTION : Single-Click Polyline Area Extractor to Hectares (ha) with
-;;;               Automatic Geometric Centroid Text Injection & Clipboard Copy
+;;; DESCRIPTION : Single-Click Polyline Area Extractor to Hectares (ha)
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
-;;; ==========================================================================
-;;;
-;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
-;;; --------------------------------------------------------------------------
-;;; In civil engineering, regional catchment hydrology (e.g. MSMA drainage),
-;;; agricultural schemes, and macro site planning, land areas are documented in
-;;; Hectares (ha). When drawings are prepared in standard civil millimetres:
-;;;   1 m²     = 1,000,000 mm²
-;;;   1 ha     = 10,000 m² = 10,000,000,000 mm² (10^10 mm²)
-;;;
-;;; GETAREAHA provides an instant, zero-friction measurement workflow:
-;;;   1. Prompts the drafter to select any closed or open lightweight polyline
-;;;      (LWPOLYLINE or 2D/3D POLYLINE).
-;;;   2. Queries drawing geometric area via native AutoCAD `_.AREA _O`.
-;;;   3. Converts raw millimetre area into metric Hectares (ha).
-;;;   4. Computes the geometric vertex centroid of the boundary.
-;;;   5. Uses atomic DXF `entmake` to inject a clean, middle-centered TEXT entity
-;;;      ("X.XXXX ha") directly inside the boundary footprint.
-;;;   6. Pipes the exact numerical hectare string directly into the Windows
-;;;      Clipboard using native Windows `clip.exe` for immediate Excel pasting.
-;;;
-;;; DRAFTING WORKFLOW:
-;;; --------------------------------------------------------------------------
-;;;  1. Type GETAREAHA in the AutoCAD / GstarCAD command line.
-;;;  2. Pick the parcel, catchment, or pond polyline boundary.
-;;;  3. The text label is automatically created at the parcel centroid, and
-;;;     the numeric value is copied to the Windows clipboard for instant use.
-;;;
-;;; USER SETTINGS:
-;;; --------------------------------------------------------------------------
-;;;  - txtHgt   : Height of the injected CAD text entity (default: 1500.0 mm).
-;;;  - decimals : Precision decimal places for hectare formatting (default: 4).
 ;;; ==========================================================================
 
 (vl-load-com)
 
-(defun c:getareaha ( / *error* txtHgt decimals ss ent rawArea haArea outText center
+(defun c:getareaha ( / *error* txtHgt decimals ss ent rawArea convArea outText center
                        oldCmd oldDimZin undoStarted fmt-dec copy-clip get-poly-center )
 
   ;; =========================================================================
@@ -53,16 +20,25 @@
   ;; =========================================================================
 
   ;; =========================================================================
-  ;; 2. ERROR HANDLING & SYSTEM SETUP
+  ;; 2. ERROR HANDLING & SYSTEM SETUP (AutoCAD 2024+ / LT & GstarCAD Safe)
   ;; =========================================================================
-  (setq oldCmd    (getvar "CMDECHO")
-        oldDimZin (getvar "DIMZIN")
+  (setq oldCmd      (getvar "CMDECHO")
+        oldDimZin   (getvar "DIMZIN")
+        undoStarted nil
   )
   (setvar "CMDECHO" 0)
   (setvar "DIMZIN" 0)
 
   (defun *error* (msg)
-    (if undoStarted (progn (command "_.UNDO" "_End") (setq undoStarted nil)))
+    (if undoStarted
+      (progn
+        (if (boundp 'command-s)
+          (vl-catch-all-apply 'command-s (list "_.UNDO" "_End"))
+          (vl-catch-all-apply 'command (list "_.UNDO" "_End"))
+        )
+        (setq undoStarted nil)
+      )
+    )
     (if oldCmd    (setvar "CMDECHO" oldCmd))
     (if oldDimZin (setvar "DIMZIN" oldDimZin))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
@@ -71,24 +47,28 @@
   )
 
   ;; =========================================================================
-  ;; 3. ZERO-PADDED FORMATTER, CLIPBOARD & TRUE SHOELACE CENTROID IN WCS
+  ;; 3. ZERO-PADDED FORMATTER, 4-LAYER CLIPBOARD & TRUE SHOELACE CENTROID
   ;; =========================================================================
   (defun fmt-dec (val dec / s dotPos fracLen)
-    (if (fboundp 'jrk:fmt-dec)
+    (if (boundp 'jrk:fmt-dec)
       (jrk:fmt-dec val dec)
       (progn
-        (setq s (rtos val 2 dec)
-              dotPos (vl-string-search "." s)
-        )
-        (if (null dotPos)
+        (setvar "DIMZIN" 0)
+        (setq s (rtos val 2 dec))
+        (if (> dec 0)
           (progn
-            (setq s (strcat s "."))
-            (repeat dec (setq s (strcat s "0")))
-          )
-          (progn
-            (setq fracLen (- (strlen s) dotPos 1))
-            (while (< fracLen dec)
-              (setq s (strcat s "0") fracLen (1+ fracLen))
+            (setq dotPos (vl-string-search "." s))
+            (if (null dotPos)
+              (progn
+                (setq s (strcat s "."))
+                (repeat dec (setq s (strcat s "0")))
+              )
+              (progn
+                (setq fracLen (- (strlen s) dotPos 1))
+                (while (< fracLen dec)
+                  (setq s (strcat s "0") fracLen (1+ fracLen))
+                )
+              )
             )
           )
         )
@@ -97,11 +77,13 @@
     )
   )
 
-  (defun copy-clip (txt / html pw clip ok tmp fh wsh cmd)
-    (if (fboundp 'jrk:copy-clip)
+  (defun copy-clip (txt / html pw clip ok tmpDir tmp fh wsh cmd pid safeTxt i ch tmpEnt)
+    (if (boundp 'jrk:copy-clip)
       (jrk:copy-clip txt)
       (progn
         (setq ok nil)
+
+        ;; Layer 1: htmlfile COM ClipboardData
         (setq html (vl-catch-all-apply 'vlax-create-object (list "htmlfile")))
         (if (and html (not (vl-catch-all-error-p html)))
           (progn
@@ -119,9 +101,14 @@
             (vl-catch-all-apply 'vlax-release-object (list html))
           )
         )
+
+        ;; Layer 2: WScript.Shell synchronous clip.exe
         (if (not ok)
           (progn
-            (setq tmp (vl-filename-mktemp "jrk_clip_" (getenv "TEMP") ".txt"))
+            (setq tmpDir (cond ((getenv "TEMP")) ((getenv "TMP")) ((getvar "TEMPPREFIX")) (".")))
+            (setq tmp (if (boundp 'vl-filename-mktemp)
+                        (vl-filename-mktemp "jrk_clip_" tmpDir ".txt")
+                        (strcat tmpDir "\\jrk_clip.txt")))
             (if (and tmp (setq fh (open tmp "w")))
               (progn
                 (princ txt fh)
@@ -130,32 +117,80 @@
                 (setq wsh (vl-catch-all-apply 'vlax-create-object (list "WScript.Shell")))
                 (if (and wsh (not (vl-catch-all-error-p wsh)))
                   (progn
-                    (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))
+                    (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))))
+                      (setq ok T)
+                    )
                     (vl-catch-all-apply 'vlax-release-object (list wsh))
-                    (setq ok T)
                   )
                 )
-                (vl-catch-all-apply 'vl-file-delete (list tmp))
+                (if (boundp 'vl-file-delete) (vl-file-delete tmp))
               )
             )
           )
         )
+
+        ;; Layer 3: AutoCAD LT 2024+ & Windows 11 Safe startapp + clip.exe
+        (if (and (not ok) (boundp 'startapp))
+          (progn
+            (setq safeTxt "" i 1)
+            (while (<= i (strlen txt))
+              (setq ch (substr txt i 1))
+              (if (not (member ch '("\"" "&" "|" "<" ">" "^" "%")))
+                (setq safeTxt (strcat safeTxt ch))
+              )
+              (setq i (1+ i))
+            )
+            (setq pid (vl-catch-all-apply 'startapp
+                        (list "cmd.exe" (strcat "/c <nul set /p=\"" safeTxt "\" | clip"))))
+            (if (and pid (not (vl-catch-all-error-p pid)) (numberp pid) (> pid 0))
+              (setq ok T)
+            )
+          )
+        )
+
+        ;; Layer 4: Pure CAD Native _.COPYCLIP Fallback
+        (if (not ok)
+          (if (entmake (list '(0 . "TEXT")
+                             '(10 0.0 0.0 0.0)
+                             '(40 . 1.0)
+                             (cons 1 txt)))
+            (progn
+              (setq tmpEnt (entlast))
+              (vl-catch-all-apply 'command (list "_.COPYCLIP" tmpEnt ""))
+              (entdel tmpEnt)
+              (setq ok T)
+            )
+          )
+        )
+
         ok
       )
     )
   )
 
-  (defun get-poly-center (e / elist pts elev n k p1 p2 cross areaSum cxSum cySum cx cy)
-    (if (fboundp 'jrk:get-poly-centroid-wcs)
+  (defun get-poly-center (e / elist typ pts elev sub subEd n k p1 p2 cross areaSum cxSum cySum cx cy)
+    (if (boundp 'jrk:get-poly-centroid-wcs)
       (jrk:get-poly-centroid-wcs e)
       (progn
         (setq elist (entget e)
+              typ   (cdr (assoc 0 elist))
               pts   nil
               elev  (if (assoc 38 elist) (cdr (assoc 38 elist)) 0.0)
         )
-        (foreach item elist
-          (if (= (car item) 10)
-            (setq pts (cons (cdr item) pts))
+        (if (= typ "POLYLINE")
+          (progn
+            (setq sub (entnext e))
+            (while (and sub (/= (cdr (assoc 0 (setq subEd (entget sub)))) "SEQEND"))
+              (if (= (cdr (assoc 0 subEd)) "VERTEX")
+                (setq pts (cons (cdr (assoc 10 subEd)) pts))
+              )
+              (setq sub (entnext sub))
+            )
+          )
+          (foreach item elist
+            (if (= (car item) 10)
+              (setq pts (cons (cdr item) pts))
+            )
           )
         )
         (setq pts (reverse pts)
@@ -204,10 +239,9 @@
 
       (command "_.AREA" "_O" ent)
       (setq rawArea (getvar "AREA"))
-      (setq haArea (/ rawArea 10000000000.0))
-      (setq outText (fmt-dec haArea decimals))
+      (setq convArea (/ rawArea 10000000000.0))
+      (setq outText (fmt-dec convArea decimals))
 
-      ;; Find true WCS centroid and inject middle-centered text
       (setq center (get-poly-center ent))
       (if center
         (entmake (list '(0 . "TEXT")
@@ -222,7 +256,6 @@
       (command "_.UNDO" "_End")
       (setq undoStarted nil)
 
-      ;; Pipe result safely to Windows Clipboard
       (if (copy-clip outText)
         (princ (strcat "\n>> Area: " outText " Hectares (Copied to Clipboard!)"))
         (princ (strcat "\n>> Area: " outText " Hectares (clipboard unavailable)"))

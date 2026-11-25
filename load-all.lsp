@@ -32,12 +32,12 @@
     (append
       (if userProfile
         (list
-          (strcat userProfile "\\Desktop\\AutoLISP 1.0\\AutoLISP 1.0\\LISPS\\")
-          (strcat userProfile "\\Desktop\\AutoLISP 1.0\\LISPS\\")
-          (strcat userProfile "\\Desktop\\AutoLISP 1.0\\AutoLISP 1.0\\LISP\\")
-          (strcat userProfile "\\Desktop\\AutoLISP 1.0\\LISP\\")
-          (strcat userProfile "\\Desktop\\AutoLISP 1.0\\AutoLISP 1.0\\")
-          (strcat userProfile "\\Desktop\\AutoLISP 1.0\\")
+          (strcat userProfile "\\Desktop\\AutoLISP 2.0\\AutoLISP 2.0\\LISPS\\")
+          (strcat userProfile "\\Desktop\\AutoLISP 2.0\\LISPS\\")
+          (strcat userProfile "\\Desktop\\AutoLISP 2.0\\AutoLISP 2.0\\LISP\\")
+          (strcat userProfile "\\Desktop\\AutoLISP 2.0\\LISP\\")
+          (strcat userProfile "\\Desktop\\AutoLISP 2.0\\AutoLISP 2.0\\")
+          (strcat userProfile "\\Desktop\\AutoLISP 2.0\\")
         )
         nil
       )

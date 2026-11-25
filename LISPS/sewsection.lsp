@@ -3,11 +3,13 @@
 ;;; MODULE      : sewsection.lsp
 ;;; COMMAND     : SEWSECTION (Aliases: LONGSEC, SEWLONG)
 ;;; DESCRIPTION : Automated Sewerage Longitudinal Section Generator
-;;;               - Pre-Ticked Toggles for IL, GL, Depth & Distance/Length
-;;;               - IL, GL, Depth & Distance on RIGHT of Manhole Line
-;;;               - Backdrop (B/D IL) on LEFT of Manhole Line
-;;;               - Closed Flat-Top (Highest GL) & Flat-Bottom (Lowest IL) Manholes
-;;;               - Connected Profile Polylines Trimmed at Manhole Shaft Walls
+;;;               - Connected Coloured Profile Polylines (Magenta IL & Yellow GL)
+;;;                 automatically Sent to Back behind the Manhole Layer
+;;;               - Guaranteed Backdrop Detection & Display (B/D IL on LEFT +
+;;;                 profile drop step) from Backdrop Column, Multi-Row MH,
+;;;                 Cross-Branch Deepest IL, or Pipe Slope Geometry
+;;;               - All Manholes Use Deepest Invert Level (Shown on RIGHT Side)
+;;;               - Closed Flat-Top (Highest GL) & Flat-Bottom (Deepest IL) Manholes
 ;;;               - Full EXTG / EXISTING / STP Manhole ID Support
 ;;;               - Strict 2-Decimal Point (0.00) Formatting
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
@@ -15,7 +17,7 @@
 
 (vl-load-com)
 
-(defun c:sewsection ( / *error* oldCmd oldOs oldDimzin
+(defun c:sewsection ( / *error* oldCmd oldOs oldDimzin undoStarted
                         ;; --- dialog & settings variables ---
                         hScaleIdx vScaleMode autoDatum baseDatumUnder10
                         manualDatum maxDistM splitRule layoutMode
@@ -30,12 +32,14 @@
                         ensure-layer ensure-textstyle ensure-dashed-ltype
                         mk-line mk-lwpoly mk-text mk-mtext fmt-2dec
                         str-trim split-csv-line clean-num is-banner-row-p clean-mh-id
+                        resolve-bd-ilin sync-deepest-and-backdrops
                         xlsx-to-temp-csv parse-sewer-csv
                         compute-datum draw-long-section )
 
-  (setq oldCmd    (getvar "CMDECHO")
-        oldOs     (getvar "OSMODE")
-        oldDimzin (getvar "DIMZIN"))
+  (setq oldCmd      (getvar "CMDECHO")
+        oldOs       (getvar "OSMODE")
+        oldDimzin   (getvar "DIMZIN")
+        undoStarted nil)
   (setvar "CMDECHO" 0)
   (setvar "DIMZIN" 0) ;; Prevents AutoCAD from suppressing trailing ".00" zeros
 
@@ -43,7 +47,7 @@
   ;; 1. DEFAULT SETTINGS (Adjustable in Popup Dialog)
   ;; =========================================================================
   (setq hScaleIdx        "2"      ;; Index 2 = 1:1000 (0=1:200, 1=1:500, 2=1:1000, 3=1:1500, 4=1:2000)
-        vScaleMode       "200"    ;; "200" = 1:200 (Default), "500" = 1:500, "1000" = 1000
+        vScaleMode       "200"    ;; "200" = 1:200 (Default), "500" = 1:500, "1000" = 1:1000
         autoDatum        "1"      ;; "1" = Automatic (+10m datum step when level >= 10m)
         baseDatumUnder10 "0"      ;; Base datum when min level < 10m (e.g. 0m or 2m)
         manualDatum      "0"      ;; Used only when autoDatum = "0"
@@ -57,7 +61,7 @@
         showLen          "1")     ;; Tick: Distance / Length
 
   ;; =========================================================================
-  ;; 2. CLEANUP, 2-DECIMAL FORMATTER & ERROR HANDLING
+  ;; 2. CLEANUP, 2-DECIMAL FORMATTER & ERROR HANDLING (AutoCAD 2024+ / LT Safe)
   ;; =========================================================================
   (defun ss:cleanup ()
     (if (and dclId (> dclId 0))
@@ -73,6 +77,15 @@
 
   (defun *error* (msg)
     (ss:cleanup)
+    (if undoStarted
+      (progn
+        (if (boundp 'command-s)
+          (vl-catch-all-apply '(lambda () (command-s "_.UNDO" "_End")))
+          (vl-catch-all-apply '(lambda () (command "_.UNDO" "_End")))
+        )
+        (setq undoStarted nil)
+      )
+    )
     (if oldDimzin (setvar "DIMZIN" oldDimzin))
     (if oldOs     (setvar "OSMODE" oldOs))
     (if oldCmd    (setvar "CMDECHO" oldCmd))
@@ -450,9 +463,8 @@
              (setq inDigits T
                    digits   (strcat digits ch)))
             (inDigits
-             ;; Check for decimal ".0" vs sub-letter "A"
              (if (= ch ".")
-               (setq i len) ;; stop at decimal point
+               (setq i len)
                (progn
                  (if (and (>= (ascii ch) 65) (<= (ascii ch) 90))
                    (progn
@@ -502,6 +514,112 @@
     )
   )
 
+  ;; Resolves Backdrop column whether it stores Drop Height (e.g. 0.33m) or B/D Elevation (e.g. 4.51m)
+  (defun resolve-bd-ilin (ilVal glVal bdVal bdIsElev / )
+    (cond
+      ((or (null bdVal) (<= bdVal 0.005))
+       ilVal)
+      ((and bdIsElev (> bdVal ilVal) (< bdVal glVal))
+       bdVal)
+      ((and (> bdVal ilVal) (< bdVal glVal) (>= (+ ilVal bdVal) glVal))
+       bdVal)
+      ((< (+ ilVal bdVal) glVal)
+       (+ ilVal bdVal))
+      ((and (> bdVal ilVal) (< bdVal glVal))
+       bdVal)
+      (T
+       ilVal)
+    )
+  )
+
+  ;; Global Pass across ALL parsed sections:
+  ;;  1. Finds the absolute DEEPEST Invert Level (minIL) and HIGHEST Ground Level (maxGL)
+  ;;     for every Manhole ID across the entire spreadsheet.
+  ;;  2. Updates every manhole in every section to use its deepest IL on the RIGHT side.
+  ;;  3. Guarantees Backdrop (B/D IL) is shown whenever:
+  ;;     (a) Backdrop column had a drop or B/D elevation, OR
+  ;;     (b) Multi-row manhole had a higher incoming IL and deeper outgoing IL, OR
+  ;;     (c) Global deepest IL from another branch is deeper than this branch's arrival IL, OR
+  ;;     (d) Upstream pipe slope (ilOut_prev - L/G) arrives >= 0.03m above deepest IL.
+  (defun sync-deepest-and-backdrops (allSections / minMap maxMap sec node mhID gl ilOut
+                                                   pair newSections newSec idx prevNode
+                                                   deepIL highGL ilIn segLen prevGrad prevReal arrIL)
+    (setq minMap nil maxMap nil)
+
+    ;; Pass 1: Collect global deepest IL and highest GL per Manhole ID
+    (foreach sec allSections
+      (foreach node sec
+        (setq mhID  (nth 0 node)
+              gl    (nth 2 node)
+              ilOut (nth 4 node))
+        (if (setq pair (assoc mhID minMap))
+          (if (< ilOut (cdr pair))
+            (setq minMap (subst (cons mhID ilOut) pair minMap))
+          )
+          (setq minMap (cons (cons mhID ilOut) minMap))
+        )
+        (if (setq pair (assoc mhID maxMap))
+          (if (> gl (cdr pair))
+            (setq maxMap (subst (cons mhID gl) pair maxMap))
+          )
+          (setq maxMap (cons (cons mhID gl) maxMap))
+        )
+      )
+    )
+
+    ;; Pass 2: Apply deepest IL, highest GL, recalculated Depth & verify Backdrop on every node
+    (setq newSections nil)
+    (foreach sec allSections
+      (setq newSec nil idx 0)
+      (while (< idx (length sec))
+        (setq node   (nth idx sec)
+              mhID   (nth 0 node)
+              highGL (if (assoc mhID maxMap) (cdr (assoc mhID maxMap)) (nth 2 node))
+              deepIL (if (assoc mhID minMap) (cdr (assoc mhID minMap)) (nth 4 node))
+              ilIn   (max (nth 3 node) (nth 4 node)))
+
+        (if (= idx 0)
+          ;; First manhole in section has no incoming pipe from left -> no left B/D
+          (setq ilIn deepIL)
+          (progn
+            ;; Check incoming pipe slope geometry (ilOut_prev - segLen / grad_prev)
+            (setq prevNode (last newSec)
+                  segLen   (- (nth 1 node) (nth 1 prevNode))
+                  prevGrad (distof (nth 7 prevNode))
+                  prevReal (nth 9 prevNode))
+            (if (and (<= (- ilIn deepIL) 0.01)
+                     prevReal
+                     prevGrad (> prevGrad 0.0)
+                     (> segLen 0.0))
+              (progn
+                (setq arrIL (- (nth 4 prevNode) (/ segLen prevGrad)))
+                (if (and (> (- arrIL deepIL) 0.03) (< arrIL highGL))
+                  (setq ilIn arrIL)
+                )
+              )
+            )
+            (if (< ilIn deepIL) (setq ilIn deepIL))
+          )
+        )
+
+        (setq newSec (append newSec
+                             (list (list mhID
+                                         (nth 1 node)
+                                         highGL
+                                         ilIn
+                                         deepIL
+                                         (nth 5 node)
+                                         (nth 6 node)
+                                         (nth 7 node)
+                                         (- highGL deepIL)
+                                         (nth 9 node)))))
+        (setq idx (1+ idx))
+      )
+      (setq newSections (append newSections (list newSec)))
+    )
+    newSections
+  )
+
   (defun xlsx-to-temp-csv (xlsPath / xlApp wbs wb tmpCsv ok)
     (setq tmpCsv (ss:tmpName ".csv") ok nil)
     (setq xlApp (vl-catch-all-apply 'vlax-get-or-create-object (list "Excel.Application")))
@@ -531,16 +649,17 @@
     (if (and ok (findfile tmpCsv)) tmpCsv nil)
   )
 
-  ;; Each MH node: (list mhID cumDist gl ilIn ilOut pipeSize pipeMat pipeGrad depthVal)
+  ;; Each MH node: (list mhID cumDist gl ilIn ilOut pipeSize pipeMat pipeGrad depthVal gradIsReal)
   (defun parse-sewer-csv (filePath limitM splitMode / fh line cells rowStr
-                          headerFound colMH colMHSub colType colLen colSize colGrad colMat colGL colIL colDepth colBD
+                          headerFound colMH colMHSub colType colRem colLen colSize colGrad colMat colGL colIL colDepth colBD bdIsElev
                           idx hCell allSections curRun pendingPipe cumDist
-                          rawA rawB rawExtra isBanner mhID lenVal sizeVal gradVal matVal glVal ilVal depthVal bdVal
-                          gCell2 gCell3 lastNode highGL ilIn ilOut calcDepth nextDist startNode
+                          rawA rawB rawExtra isBanner mhID lenVal sizeVal gradVal gradReal matVal glVal ilVal depthVal bdVal
+                          gCell2 gCell3 lastNode highGL bdIlIn ilIn ilOut calcDepth nextDist startNode
                           prevSec prevLast)
     (setq fh (open filePath "r")
           headerFound nil
-          colMH 0 colMHSub 1 colType 2 colLen 10 colSize 11 colGrad 12 colMat 15 colGL 22 colIL 23 colDepth 24 colBD 25
+          bdIsElev nil
+          colMH 0 colMHSub 1 colType 2 colRem nil colLen 10 colSize 11 colGrad 12 colMat 15 colGL 22 colIL 23 colDepth 24 colBD 25
           allSections nil
           curRun nil
           pendingPipe nil
@@ -555,15 +674,17 @@
                    (wcmatch rowStr "*LENGTH*PIPE*SIZE*")
                    (wcmatch rowStr "*GROUND*LEVEL*INVERT*")))
         (progn
-          (setq headerFound T idx 0
-                colMH nil colMHSub nil colType nil colLen nil colSize nil colGrad nil colMat nil colGL nil colIL nil colDepth nil colBD nil)
+          (setq headerFound T idx 0 bdIsElev nil
+                colMH nil colMHSub nil colType nil colRem nil colLen nil colSize nil colGrad nil colMat nil colGL nil colIL nil colDepth nil colBD nil)
           (foreach cell cells
             (setq hCell (strcase (str-trim cell)))
             (cond
               ((and (null colMH) (wcmatch hCell "*MANHOLE*NO*,MH,MANHOLE,MH ID,NODE*"))
                (setq colMH idx))
-              ((and (null colType) (wcmatch hCell "*TYPE*OF*BUILDING*,*REMARK*,*STATUS*,*LOCATION*"))
+              ((and (null colType) (wcmatch hCell "*TYPE*OF*BUILDING*,*STATUS*,*LOCATION*"))
                (setq colType idx))
+              ((and (null colRem) (wcmatch hCell "*REMARK*,*NOTE*"))
+               (setq colRem idx))
               ((and (null colLen) (wcmatch hCell "*LENGTH*,LEN*"))
                (setq colLen idx))
               ((and (null colSize) (wcmatch hCell "*PIPE*SIZE*,*DIAMETER*,SIZE,DIA*"))
@@ -578,8 +699,11 @@
                (setq colIL idx))
               ((and (null colDepth) (wcmatch hCell "*DEPTH*"))
                (setq colDepth idx))
-              ((and (null colBD) (wcmatch hCell "*BACKDROP*,B/D*"))
-               (setq colBD idx))
+              ((and (null colBD)
+                    (wcmatch hCell "*BACK*DROP*,*B/D*,*B.D*,*BD IL*,BD,*DROP*")
+                    (not (wcmatch hCell "*HEAD*,*PRESSURE*")))
+               (setq colBD    idx
+                     bdIsElev (wcmatch hCell "*IL*,*LEVEL*")))
             )
             (setq idx (1+ idx))
           )
@@ -599,11 +723,11 @@
         (progn
           (setq rawA     (if (< colMH (length cells)) (nth colMH cells) "")
                 rawB     (if (and colMHSub (< colMHSub (length cells))) (nth colMHSub cells) "")
-                rawExtra (if (and colType (< colType (length cells))) (nth colType cells) "")
+                rawExtra (strcat (if (and colType (< colType (length cells))) (nth colType cells) "")
+                                 " "
+                                 (if (and colRem (< colRem (length cells))) (nth colRem cells) ""))
                 isBanner (is-banner-row-p (strcat rawA " " rawB)))
 
-          ;; If we hit a "PE FROM ..." or "BRANCH ..." header row, clear pendingPipe
-          ;; so a new branch starts unless the next row continues the exact same manhole ID.
           (if isBanner
             (setq pendingPipe nil)
             (if (> (length cells) (min colGL colIL))
@@ -617,12 +741,12 @@
                       bdVal    (if (and colBD    (< colBD    (length cells))) (clean-num (nth colBD    cells)) nil)
                       matVal   (if (and colMat   (< colMat   (length cells))) (str-trim  (nth colMat   cells)) ""))
 
-                ;; If Manhole ID cell is blank because vertically merged in Excel on the 2nd row of the set
+                ;; Vertically merged Manhole ID cell on 2nd row of the same manhole
                 (if (and (= mhID "") curRun (or glVal ilVal lenVal))
                   (setq mhID (nth 0 (last curRun)))
                 )
 
-                ;; Fallback level calculation if GL or IL was merged or omitted on a row
+                ;; Fallback level calculation if GL or IL was merged or omitted
                 (if (and (null glVal) ilVal)
                   (cond
                     ((and depthVal (> depthVal 0.0))
@@ -644,127 +768,129 @@
 
                 (if (or (= matVal "") (= matVal "-")) (setq matVal "VCP"))
 
-                (setq gradVal nil)
+                (setq gradVal nil gradReal nil)
                 (if (and colGrad (< colGrad (length cells)))
                   (progn
                     (setq gCell2 (if (< (1+ colGrad) (length cells)) (str-trim (nth (1+ colGrad) cells)) "")
                           gCell3 (if (< (+ colGrad 2) (length cells)) (str-trim (nth (+ colGrad 2) cells)) ""))
                     (cond
                       ((and (= (str-trim (nth colGrad cells)) "1") (= gCell2 ":") (clean-num gCell3))
-                       (setq gradVal (itoa (fix (+ (clean-num gCell3) 0.5)))))
+                       (setq gradVal (itoa (fix (+ (clean-num gCell3) 0.5))) gradReal T))
                       ((vl-string-search ":" (nth colGrad cells))
                        (setq gradVal (substr (nth colGrad cells) (+ (vl-string-search ":" (nth colGrad cells)) 2)))
-                       (if (clean-num gradVal) (setq gradVal (itoa (fix (+ (clean-num gradVal) 0.5))))))
+                       (if (clean-num gradVal)
+                         (setq gradVal (itoa (fix (+ (clean-num gradVal) 0.5))) gradReal T)
+                       ))
                       ((clean-num (nth colGrad cells))
-                       (setq gradVal (itoa (fix (+ (clean-num (nth colGrad cells)) 0.5)))))
+                       (setq gradVal (itoa (fix (+ (clean-num (nth colGrad cells)) 0.5))) gradReal T))
                     )
                   )
                 )
                 (if (or (null gradVal) (= gradVal "")) (setq gradVal "200"))
 
                 (if (and (/= mhID "") glVal ilVal)
-                  (cond
-                    ;; CASE 1: Same Manhole ID at next row of the set -> update to Highest GL & Lowest IL
-                    ((and curRun (= mhID (nth 0 (last curRun))))
-                     (setq lastNode  (last curRun)
-                           highGL    (max glVal (nth 2 lastNode))
-                           ilIn      (max ilVal (nth 3 lastNode))
-                           ilOut     (min ilVal (nth 4 lastNode))
-                           calcDepth (- highGL ilOut))
-                     (setq lastNode (list (nth 0 lastNode)
-                                          (nth 1 lastNode)
-                                          highGL
-                                          ilIn
-                                          ilOut
-                                          (if sizeVal (itoa (fix (+ sizeVal 0.5))) (nth 5 lastNode))
-                                          (if (and (/= matVal "") (/= matVal "-")) matVal (nth 6 lastNode))
-                                          (if gradVal gradVal (nth 7 lastNode))
-                                          calcDepth))
-                     (setq curRun (append (reverse (cdr (reverse curRun))) (list lastNode)))
+                  (progn
+                    (setq bdIlIn (resolve-bd-ilin ilVal glVal bdVal bdIsElev))
+                    (cond
+                      ;; CASE 1: Same Manhole ID at next row -> Highest GL, Deepest IL & Preserve Backdrop
+                      ((and curRun (= mhID (nth 0 (last curRun))))
+                       (setq lastNode  (last curRun)
+                             highGL    (max glVal (nth 2 lastNode))
+                             ilOut     (min ilVal (nth 4 lastNode))
+                             ilIn      (max (nth 3 lastNode) ilVal bdIlIn)
+                             calcDepth (- highGL ilOut))
+                       (setq lastNode (list (nth 0 lastNode)
+                                            (nth 1 lastNode)
+                                            highGL
+                                            ilIn
+                                            ilOut
+                                            (if sizeVal (itoa (fix (+ sizeVal 0.5))) (nth 5 lastNode))
+                                            (if (and (/= matVal "") (/= matVal "-")) matVal (nth 6 lastNode))
+                                            (if gradReal gradVal (nth 7 lastNode))
+                                            calcDepth
+                                            (or gradReal (nth 9 lastNode))))
+                       (setq curRun (append (reverse (cdr (reverse curRun))) (list lastNode)))
 
-                     ;; Also if a section in allSections just ended with this same MH ID, sync its lowest IL & highest GL
-                     (if (and (= (length curRun) 1) allSections)
-                       (progn
-                         (setq prevSec  (last allSections)
-                               prevLast (last prevSec))
-                         (if (= mhID (nth 0 prevLast))
-                           (progn
-                             (setq prevLast (list (nth 0 prevLast)
-                                                  (nth 1 prevLast)
-                                                  (max highGL (nth 2 prevLast))
-                                                  (max ilIn   (nth 3 prevLast))
-                                                  (min ilOut  (nth 4 prevLast))
-                                                  (nth 5 prevLast)
-                                                  (nth 6 prevLast)
-                                                  (nth 7 prevLast)
-                                                  (- (max highGL (nth 2 prevLast)) (min ilOut (nth 4 prevLast))))
-                                   prevSec  (append (reverse (cdr (reverse prevSec))) (list prevLast))
-                                   allSections (append (reverse (cdr (reverse allSections))) (list prevSec)))
+                       (if (and (= (length curRun) 1) allSections)
+                         (progn
+                           (setq prevSec  (last allSections)
+                                 prevLast (last prevSec))
+                           (if (= mhID (nth 0 prevLast))
+                             (progn
+                               (setq prevLast (list (nth 0 prevLast)
+                                                    (nth 1 prevLast)
+                                                    (max highGL (nth 2 prevLast))
+                                                    (max ilIn   (nth 3 prevLast))
+                                                    (min ilOut  (nth 4 prevLast))
+                                                    (nth 5 prevLast)
+                                                    (nth 6 prevLast)
+                                                    (nth 7 prevLast)
+                                                    (- (max highGL (nth 2 prevLast)) (min ilOut (nth 4 prevLast)))
+                                                    (nth 9 prevLast))
+                                     prevSec     (append (reverse (cdr (reverse prevSec))) (list prevLast))
+                                     allSections (append (reverse (cdr (reverse allSections))) (list prevSec)))
+                             )
                            )
                          )
                        )
-                     )
 
-                     (if (and lenVal (> lenVal 0.0))
-                       (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal))
-                     )
-                    )
-
-                    ;; CASE 2: Next Manhole connected by pendingPipe
-                    ((and curRun pendingPipe)
-                     (setq nextDist (+ cumDist (nth 0 pendingPipe)))
-
-                     ;; Split section AFTER all rows of the previous manhole have been merged
-                     (if (and (>= (length curRun) 2)
-                              (or (and (= splitMode "STRICT") (> nextDist limitM))
-                                  (and (= splitMode "CROSS")  (>= cumDist limitM))))
-                       (progn
-                         (setq allSections (append allSections (list curRun))
-                               lastNode    (last curRun)
-                               startNode   (list (nth 0 lastNode) 0.0 (nth 2 lastNode) (nth 4 lastNode) (nth 4 lastNode)
-                                                 (nth 5 lastNode) (nth 6 lastNode) (nth 7 lastNode) (nth 8 lastNode))
-                               curRun      (list startNode)
-                               cumDist     (nth 0 pendingPipe))
+                       (if (and lenVal (> lenVal 0.0))
+                         (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal gradReal))
                        )
-                       (setq cumDist nextDist)
-                     )
+                      )
 
-                     ;; Only apply single-row bdVal if this row itself has no outgoing pipe (e.g. 1-row CSV or terminal EXTG MH)
-                     (setq ilIn      (if (and bdVal (> bdVal 0.005) (or (null lenVal) (<= lenVal 0.0)))
-                                       (+ ilVal bdVal)
-                                       ilVal)
-                           ilOut     ilVal
-                           calcDepth (- glVal ilOut))
+                      ;; CASE 2: Next Manhole connected by pendingPipe
+                      ((and curRun pendingPipe)
+                       (setq nextDist (+ cumDist (nth 0 pendingPipe)))
 
-                     (setq curRun (append curRun
-                                          (list (list mhID cumDist glVal ilIn ilOut
-                                                      (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225")
-                                                      matVal gradVal calcDepth))))
+                       ;; Split section AFTER all rows of the previous manhole have been merged
+                       (if (and (>= (length curRun) 2)
+                                (or (and (= splitMode "STRICT") (> nextDist limitM))
+                                    (and (= splitMode "CROSS")  (>= cumDist limitM))))
+                         (progn
+                           (setq allSections (append allSections (list curRun))
+                                 lastNode    (last curRun)
+                                 startNode   (list (nth 0 lastNode) 0.0 (nth 2 lastNode) (nth 4 lastNode) (nth 4 lastNode)
+                                                   (nth 5 lastNode) (nth 6 lastNode) (nth 7 lastNode) (nth 8 lastNode) (nth 9 lastNode))
+                                 curRun      (list startNode)
+                                 cumDist     (nth 0 pendingPipe))
+                         )
+                         (setq cumDist nextDist)
+                       )
 
-                     (if (and lenVal (> lenVal 0.0))
-                       (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal))
-                       (setq pendingPipe nil)
-                     )
-                    )
+                       ;; Always honour Backdrop column (works whether this MH has an outgoing pipe or not!)
+                       (setq ilIn      bdIlIn
+                             ilOut     ilVal
+                             calcDepth (- glVal ilOut))
 
-                    ;; CASE 3: New Sewer Branch
-                    (T
-                     (if (>= (length curRun) 2)
-                       (setq allSections (append allSections (list curRun)))
-                     )
-                     (setq cumDist   0.0
-                           ilIn      (if (and bdVal (> bdVal 0.005) (or (null lenVal) (<= lenVal 0.0)))
-                                       (+ ilVal bdVal)
-                                       ilVal)
-                           ilOut     ilVal
-                           calcDepth (- glVal ilOut)
-                           curRun    (list (list mhID 0.0 glVal ilIn ilOut
-                                                 (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225")
-                                                 matVal gradVal calcDepth)))
-                     (if (and lenVal (> lenVal 0.0))
-                       (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal))
-                       (setq pendingPipe nil)
-                     )
+                       (setq curRun (append curRun
+                                            (list (list mhID cumDist glVal ilIn ilOut
+                                                        (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225")
+                                                        matVal gradVal calcDepth gradReal))))
+
+                       (if (and lenVal (> lenVal 0.0))
+                         (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal gradReal))
+                         (setq pendingPipe nil)
+                       )
+                      )
+
+                      ;; CASE 3: New Sewer Branch
+                      (T
+                       (if (>= (length curRun) 2)
+                         (setq allSections (append allSections (list curRun)))
+                       )
+                       (setq cumDist   0.0
+                             ilIn      bdIlIn
+                             ilOut     ilVal
+                             calcDepth (- glVal ilOut)
+                             curRun    (list (list mhID 0.0 glVal ilIn ilOut
+                                                   (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225")
+                                                   matVal gradVal calcDepth gradReal)))
+                       (if (and lenVal (> lenVal 0.0))
+                         (setq pendingPipe (list lenVal (if sizeVal (itoa (fix (+ sizeVal 0.5))) "225") matVal gradVal gradReal))
+                         (setq pendingPipe nil)
+                       )
+                      )
                     )
                   )
                 )
@@ -778,7 +904,10 @@
     (if (>= (length curRun) 2)
       (setq allSections (append allSections (list curRun)))
     )
-    allSections
+    (if allSections
+      (sync-deepest-and-backdrops allSections)
+      nil
+    )
   )
 
   ;; =========================================================================
@@ -816,19 +945,20 @@
 
   ;; =========================================================================
   ;; 7. LONGITUDINAL SECTION GEOMETRY ENGINE
-  ;;    - Dynamically builds ticked rows (IL, GL, Depth, Distance/Length)
-  ;;    - IL, GL, Depth & Distance placed on RIGHT of Manhole Line (+1050.0)
-  ;;    - Backdrop (B/D IL) placed on LEFT of Manhole Line (-1050.0 & -2150.0)
-  ;;    - Closed Flat Manhole Box (Top = Highest GL, Bottom = Lowest IL)
-  ;;    - Connected Profile Polylines Trimmed at Manhole Shaft Walls (+/-375.0)
+  ;;    - Connected Continuous Coloured Polylines ("M" Magenta IL & "P" Yellow GL)
+  ;;      drawn first & explicitly Sent to Back behind the Manhole Layer ("TITLE")
+  ;;    - Closed Flat-Top (Highest GL) & Flat-Bottom (Deepest IL) Manhole Boxes
+  ;;    - Deepest IL, GL, Depth & Distance ALWAYS on RIGHT of Manhole Line (+1050.0)
+  ;;    - Backdrop (B/D IL) clearly shown on LEFT of Manhole Line (-1050.0 & -2150.0)
+  ;;      and stepped cleanly on the connected Magenta Invert Polyline
   ;; =========================================================================
   (defun draw-long-section (ptBase secNodes hScale vScale datumVal /
                             x0 y0 hdrW rowH shaftHalfW hMult vMult totalDist xStart xEnd
                             curTopY yRowIL yRowGL yRowDepth yRowLen yBottom
                             maxGL n node yTop idx lastIdx mhID dM gl ilIn ilOut depthM xMh
                             yIlIn yIlOut yGl xTxtRight titleMHs
-                            nextNode dNext xNext yIlNextIn yIlNextOut yGlNext segLenM spanNext
-                            xPipe1 xPipe2 xMid pipeStr)
+                            nextNode dNext xNext segLenM xMid pipeStr
+                            mPts pPts profEnts ssBack pe )
 
     (setq x0         (car ptBase)
           y0         (cadr ptBase)
@@ -850,13 +980,58 @@
     (setq yTop (max (+ y0 49500.0)
                     (+ y0 (* (- maxGL datumVal) vMult) 15000.0)))
 
-    ;; 1. Draw Top Datum Line & DATUM Label
+    ;; -----------------------------------------------------------------------
+    ;; 1. BUILD & DRAW CONTINUOUS CONNECTED COLOURED PROFILE POLYLINES FIRST
+    ;;    (Drawn before Manhole Boxes + explicitly Sent to Back via DRAWORDER)
+    ;; -----------------------------------------------------------------------
+    (setq mPts nil pPts nil profEnts nil idx 0)
+    (while (<= idx lastIdx)
+      (setq node   (nth idx secNodes)
+            dM     (nth 1 node)
+            gl     (nth 2 node)
+            ilIn   (nth 3 node)
+            ilOut  (nth 4 node)
+            xMh    (+ xStart (* dM hMult))
+            yIlIn  (+ y0 (* (- ilIn  datumVal) vMult))
+            yIlOut (+ y0 (* (- ilOut datumVal) vMult))
+            yGl    (+ y0 (* (- gl    datumVal) vMult)))
+
+      ;; Yellow Dashed Road Profile Polyline connects continuously across every manhole
+      (setq pPts (append pPts (list (list xMh yGl))))
+
+      ;; Magenta Sewer Invert Profile Polyline connects continuously across every manhole
+      ;; and steps vertically down from Backdrop IL (yIlIn) to Deepest IL (yIlOut)
+      (if (and (> idx 0) (> (- ilIn ilOut) 0.01))
+        (setq mPts (append mPts (list (list xMh yIlIn)
+                                      (list xMh yIlOut))))
+        (setq mPts (append mPts (list (list xMh yIlOut))))
+      )
+
+      (setq idx (1+ idx))
+    )
+
+    ;; Create continuous Magenta Sewer Invert Polyline (Layer "M")
+    (if (>= (length mPts) 2)
+      (if (mk-lwpoly "M" mPts nil nil)
+        (setq profEnts (cons (entlast) profEnts))
+      )
+    )
+
+    ;; Create continuous Yellow Dashed Proposed Road Polyline (Layer "P")
+    (if (>= (length pPts) 2)
+      (if (mk-lwpoly "P" pPts nil 2500.0)
+        (setq profEnts (cons (entlast) profEnts))
+      )
+    )
+
+    ;; -----------------------------------------------------------------------
+    ;; 2. DRAW DATUM LINE, TABLE ROWS & HEADER LABELS (LAYER "TITLE")
+    ;; -----------------------------------------------------------------------
     (mk-line "TITLE" (list x0 y0) (list xEnd y0) nil)
     (mk-text "TITLE" "T3"
              (strcat "DATUM " (rtos datumVal 2 (if (equal datumVal (fix datumVal) 0.01) 0 2)) "m")
              (list x0 (+ y0 1350.0)) 1300.0 0.0 0.85 0 2)
 
-    ;; 2. Dynamically Build Ticked Table Rows Below Datum (y0)
     (setq curTopY   y0
           yRowIL    nil
           yRowGL    nil
@@ -910,7 +1085,9 @@
 
     (setq yBottom curTopY)
 
-    ;; 3. Loop Through Manholes: Vertical Lines, Closed Flat Shafts, Table Values & Connected Polylines
+    ;; -----------------------------------------------------------------------
+    ;; 3. DRAW MANHOLE VERTICALS, CLOSED FLAT BOXES, TABLE VALUES & BACKDROPS
+    ;; -----------------------------------------------------------------------
     (setq idx 0 titleMHs "")
     (while (<= idx lastIdx)
       (setq node   (nth idx secNodes)
@@ -930,7 +1107,7 @@
       ;; 3A. Central Vertical Manhole Line from bottom table line (yBottom) to top (yTop)
       (mk-line "TITLE" (list xMh yBottom) (list xMh yTop) nil)
 
-      ;; 3B. Closed & Flat Manhole Box (Flat Bottom at Lowest IL = yIlOut, Flat Top at Highest GL = yGl)
+      ;; 3B. Closed & Flat Manhole Box (Flat Bottom at Deepest IL = yIlOut, Flat Top at Highest GL = yGl)
       (if (> yGl yIlOut)
         (mk-lwpoly "TITLE"
                    (list (list (- xMh shaftHalfW) yIlOut)
@@ -944,7 +1121,7 @@
       ;; 3C. Top Manhole ID Label (Layer "M", Style "T3", Height 1300, Rot 90, Width 0.85, Bottom-Left)
       (mk-text "M" "T3" mhID (list (- xMh 250.0) (- yTop 3700.0)) 1300.0 (/ pi 2.0) 0.85 0 1)
 
-      ;; 3D. Ticked Table Values: IL, GL, Depth & Distance ALWAYS on RIGHT of Manhole Line (+1050.0)
+      ;; 3D. Ticked Table Values: Deepest IL, GL, Depth & Distance ALWAYS on RIGHT of Manhole Line (+1050.0)
       (setq xTxtRight (+ xMh 1050.0))
       (if yRowIL
         (mk-text "DT" "2" (fmt-2dec ilOut)  (list xTxtRight yRowIL)    900.0 (/ pi 2.0) 0.85 1 2)
@@ -959,7 +1136,7 @@
         (mk-text "DT" "2" (fmt-2dec dM)     (list xTxtRight yRowLen)   900.0 (/ pi 2.0) 0.85 1 2)
       )
 
-      ;; 3E. Backdrop Info stays on LEFT of Manhole Line (-1050.0 and -2150.0)
+      ;; 3E. Backdrop (B/D IL) ALWAYS shown on LEFT of Manhole Line (-1050.0 & -2150.0)
       (if (and (> idx 0) (> (- ilIn ilOut) 0.01))
         (if yRowIL
           (progn
@@ -969,49 +1146,15 @@
         )
       )
 
-      ;; 3F. Connect Profile Polylines (Trimmed at Manhole Shaft Walls) & Pipe MTEXT to Next Manhole
+      ;; 3F. Pipe Specification MTEXT between Manholes
       (if (< idx lastIdx)
         (progn
-          (setq nextNode   (nth (1+ idx) secNodes)
-                dNext      (nth 1 nextNode)
-                xNext      (+ xStart (* dNext hMult))
-                yGlNext    (+ y0 (* (- (nth 2 nextNode) datumVal) vMult))
-                yIlNextIn  (+ y0 (* (- (nth 3 nextNode) datumVal) vMult))
-                yIlNextOut (+ y0 (* (- (nth 4 nextNode) datumVal) vMult))
-                spanNext   (- xNext xMh)
-                segLenM    (- dNext dM)
-                xMid       (/ (+ xMh xNext) 2.0))
+          (setq nextNode (nth (1+ idx) secNodes)
+                dNext    (nth 1 nextNode)
+                xNext    (+ xStart (* dNext hMult))
+                segLenM  (- dNext dM)
+                xMid     (/ (+ xMh xNext) 2.0))
 
-          (if (> spanNext (* 2.0 shaftHalfW))
-            (setq xPipe1 (+ xMh shaftHalfW)
-                  xPipe2 (- xNext shaftHalfW))
-            (setq xPipe1 xMh
-                  xPipe2 xNext)
-          )
-
-          ;; Magenta Sewer Invert Profile Polyline (Connected from xMh+375 at lowest IL to xNext-375 at incoming IL, and down to lowest IL if backdrop)
-          (if (> (- (nth 3 nextNode) (nth 4 nextNode)) 0.01)
-            (mk-lwpoly "M"
-                       (list (list xPipe1 yIlOut)
-                             (list xPipe2 yIlNextIn)
-                             (list xPipe2 yIlNextOut))
-                       nil
-                       nil)
-            (mk-lwpoly "M"
-                       (list (list xPipe1 yIlOut)
-                             (list xPipe2 yIlNextOut))
-                       nil
-                       nil)
-          )
-
-          ;; Yellow Dashed Proposed Road Profile Polyline (Connected from xMh+375 at flat GL to xNext-375 at flat GL)
-          (mk-lwpoly "P"
-                     (list (list xPipe1 yGl)
-                           (list xPipe2 yGlNext))
-                     nil
-                     2500.0)
-
-          ;; Pipe Specification MTEXT in Invert Level Row
           (if yRowIL
             (if (< (* segLenM (/ 1000.0 hScale)) 18.0)
               (progn
@@ -1030,7 +1173,20 @@
       (setq idx (1+ idx))
     )
 
-    ;; 4. Bottom Section Title & Scale Annotations positioned dynamically below yBottom
+    ;; 4. Explicitly Send Coloured Profile Polylines ("M" & "P") to Back behind Manhole Layer ("TITLE")
+    (if profEnts
+      (progn
+        (setq ssBack (ssadd))
+        (foreach pe profEnts
+          (if (and pe (entget pe)) (ssadd pe ssBack))
+        )
+        (if (> (sslength ssBack) 0)
+          (vl-catch-all-apply '(lambda () (command "_.DRAWORDER" ssBack "" "_B")))
+        )
+      )
+    )
+
+    ;; 5. Bottom Section Title & Scale Annotations positioned dynamically below yBottom
     (mk-text "TITLE" "T3"
              (strcat "LONG. SECTION OF " titleMHs)
              (list x0 (- yBottom 4000.0)) 2500.0 0.0 0.85 0 0)
@@ -1107,6 +1263,7 @@
               (if (or (= layoutMode "PICK") ptStart)
                 (progn
                   (command "_.UNDO" "_Begin")
+                  (setq undoStarted T)
                   (setvar "OSMODE" 0)
                   (if ptStart (setq curPt (trans ptStart 1 0)))
                   (setq secIdx 1 gapX 25000.0)
@@ -1139,6 +1296,7 @@
                   )
 
                   (command "_.UNDO" "_End")
+                  (setq undoStarted nil)
                   (princ (strcat "\n>> SEWSECTION Complete! Generated " (itoa (length sections))
                                  " Longitudinal Section(s) at HOR 1:" (itoa (fix hScaleVal))
                                  ", VER 1:" (itoa (fix vScaleVal)) "."))

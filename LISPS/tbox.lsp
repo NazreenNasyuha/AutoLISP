@@ -1,49 +1,84 @@
 ;;; ==========================================================================
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
 ;;; MODULE      : tbox.lsp
-;;; COMMAND     : TBOX (Aliases: BOXSIM, TEXTBOX)
-;;; DESCRIPTION : Select Similar TEXT / MTEXT & Draw Rotated Rectangular
-;;;               Polyline Boxes Around Each Text (AutoCAD LT 2024 & GstarCAD)
-;;; COMPATIBILITY: Universal (100% Pure AutoLISP / DXF - Zero ActiveX Needed)
+;;; COMMAND     : TBOX (Aliases: HOUSECOUNT, FTAREA)
+;;; DESCRIPTION : House / Lot Polyline Counter, Block Creator & Sq.Ft Area Tag
+;;;               - Pick a house/lot polyline
+;;;               - Automatically converts area to Square Feet (sq.ft)
+;;;                 (supports Millimeter [1m=1000] and Meter [1m=1] drawings)
+;;;               - Stamps a numbered copy tag (e.g. #01, #02) and area label
+;;;                 (e.g. 1,250.00 sq.ft) on each copied polyline
+;;;               - Optionally creates a reusable CAD Block from the polyline
+;;;                 and/or copies the area / count to Windows Clipboard
+;;;               - Follows your cursor on each copy/placement until Enter/Esc
+;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD)
 ;;; ==========================================================================
 
-(defun c:tbox ( / *error* oldCmd
+(vl-load-com)
+
+(defun c:tbox ( / *error* oldCmd oldOs oldDimzin undoStarted
                   ;; --- settings ---
-                  defOffFactor boxWidth
+                  unitsMode unitsPerM tagPrefix startNum curNum padLen
+                  makeBlock blkNamePrefix placeMode copyToClip showAreaTag
+                  txtHgt txtLay
                   ;; --- helper functions ---
-                  tb:esc tb:trim tb:cleanup tb:tmpName
-                  tb:writeDCL tb:runDialog tb:askCmdLine
-                  get-clean-text extract-prefix pick-source-text
-                  has-box-already-p draw-rotated-box
+                  tb:trim tb:fmt-num tb:fmt-int-pad tb:copy-clip
+                  tb:get-poly-pts-wcs tb:poly-area-wcs tb:poly-centroid-wcs
+                  tb:make-shifted-pts tb:draw-poly-wcs tb:draw-text-wcs
+                  tb:create-house-block
                   ;; --- state variables ---
-                  srcEnt srcData srcType srcLayer srcTxt srcPrefix
-                  offFactorStr offFactor scopeMode matchPrefix
-                  dclFile dclId dlgOK
-                  ss filt i cnt skipped e ed eTxt )
+                  sel ent ed srcPts srcAreaRaw srcAreaM2 srcAreaFt2
+                  ans nVal dispPt txtStr areaStr newPolyEnt blkDefName
+                  grState grPt grPts i stepEnts totalCopied
+                  prevPt curPt dx dy shiftPts )
 
   ;; =========================================================================
-  ;; 1. USER SETTINGS (Defaults - Adjustable in Popup Dialog)
+  ;; 1. DEFAULT SETTINGS (Adjustable Live on Command Line)
   ;; =========================================================================
-  (setq defOffFactor 0.35) ;; Default padding around text (0.35 x Text Height)
-  (setq boxWidth     0.0)  ;; Polyline global width (0.0 = standard crisp line)
-  ;; =========================================================================
+  (setq unitsMode     "AUTO"     ;; "AUTO" detects mm vs m from polyline size; or "MM" / "M"
+        unitsPerM     1000.0     ;; 1000.0 = Millimeter drawing (1m = 1000 units), 1.0 = Meter drawing
+        tagPrefix     "#"        ;; Prefix before counter number (e.g. "#", "H-", "LOT ")
+        startNum      1          ;; Starting count number
+        curNum        1          ;; Active counter number (increments each copy)
+        padLen        2          ;; Zero-padding width (2 -> 01, 02...; 1 -> 1, 2...)
+        makeBlock     "Yes"      ;; "Yes" = Create/update a CAD Block definition too; "No" = Polyline + Tag only
+        blkNamePrefix "HOUSE_"   ;; Generated block name prefix (e.g. HOUSE_01)
+        placeMode     "COPY"     ;; "COPY" = Copy polyline + number + area; "BLOCK" = Insert numbered block
+        copyToClip    "Area"     ;; "Area" = Copy sq.ft value, "Count" = Copy count, "Off" = Disabled
+        showAreaTag   "Yes"      ;; "Yes" = Stamp sq.ft area text alongside count number
+        txtHgt        nil        ;; Auto-scaled if nil
+        txtLay        nil        ;; Uses source polyline layer
+        undoStarted   nil)
 
-  (setq oldCmd (getvar "CMDECHO"))
+  (setq oldCmd    (getvar "CMDECHO")
+        oldOs     (getvar "OSMODE")
+        oldDimzin (getvar "DIMZIN"))
   (setvar "CMDECHO" 0)
+  (setvar "DIMZIN" 0)
 
-  ;; -------------------------------------------------------------------------
-  ;; 2. PURE AUTOLISP HELPERS (AutoCAD LT 2024 & "#JRK" Layer Safe)
-  ;; -------------------------------------------------------------------------
-  (defun tb:esc (str / k ch out)
-    (setq k 1 out "")
-    (while (<= k (strlen str))
-      (setq ch (substr str k 1))
-      (setq out (strcat out (if (member ch '("`" "*" "?" "#" "@" "." "~" "[" "]" ",")) "`" "") ch))
-      (setq k (1+ k))
+  (defun *error* (msg)
+    (redraw)
+    (if undoStarted
+      (progn
+        (if (boundp 'command-s)
+          (vl-catch-all-apply '(lambda () (command-s "_.UNDO" "_End")))
+          (vl-catch-all-apply '(lambda () (command "_.UNDO" "_End")))
+        )
+        (setq undoStarted nil)
+      )
     )
-    out
+    (if oldDimzin (setvar "DIMZIN" oldDimzin))
+    (if oldOs     (setvar "OSMODE" oldOs))
+    (if oldCmd    (setvar "CMDECHO" oldCmd))
+    (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
+      (princ (strcat "\n[TBOX Error]: " msg))
+    )
+    (princ)
   )
 
+  ;; =========================================================================
+  ;; 2. PURE AUTOLISP STRING, NUMBER & 4-LAYER CLIPBOARD HELPERS
+  ;; =========================================================================
   (defun tb:trim (s / len i1 i2)
     (if (or (null s) (/= (type s) 'STR))
       ""
@@ -60,408 +95,529 @@
     )
   )
 
-  (defun tb:cleanup ()
-    (if (and dclId (> dclId 0))
-      (progn (unload_dialog dclId) (setq dclId nil))
+  (defun tb:fmt-int-pad (n pad / s)
+    (setq s (itoa n))
+    (while (< (strlen s) pad)
+      (setq s (strcat "0" s))
     )
-    (if (and dclFile (findfile dclFile) (boundp 'vl-file-delete))
-      (vl-file-delete dclFile)
-    )
+    s
   )
 
-  (defun *error* (msg)
-    (tb:cleanup)
-    (if oldCmd (setvar "CMDECHO" oldCmd))
-    (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
-      (princ (strcat "\n[TBOX Error]: " msg))
+  ;; Formats decimal number cleanly with no DIMZIN trailing-zero loss
+  (defun tb:fmt-num (val dec / s dotPos fracLen)
+    (setvar "DIMZIN" 0)
+    (setq s (rtos (if (numberp val) val 0.0) 2 dec))
+    (if (= (substr s 1 1) ".")
+      (setq s (strcat "0" s))
     )
-    (princ)
-  )
-
-  (defun tb:tmpName ( / tmpDir)
-    (if (boundp 'vl-filename-mktemp)
-      (vl-filename-mktemp "tbox.dcl")
+    (if (= (substr s 1 2) "-.")
+      (setq s (strcat "-0." (substr s 3)))
+    )
+    (if (> dec 0)
       (progn
-        (setq tmpDir (cond ((getenv "TEMP")) ((getenv "TMP")) ((getvar "TEMPPREFIX")) (".")))
-        (if (member (substr tmpDir (strlen tmpDir) 1) '("\\" "/"))
-          (strcat tmpDir "tbox_" (itoa (getvar "MILLISECS")) ".dcl")
-          (strcat tmpDir "\\tbox_" (itoa (getvar "MILLISECS")) ".dcl")
-        )
-      )
-    )
-  )
-
-  ;; Strips leading MTEXT formatting ({\W0.5;, {\f...;) to read clean visible text
-  (defun get-clean-text (ed / typ raw item len i loopP ch sec semi)
-    (setq typ (cdr (assoc 0 ed)) raw "")
-    (if (= typ "MTEXT")
-      (foreach item ed
-        (if (and (or (= (car item) 3) (= (car item) 1)) (= (type (cdr item)) 'STR))
-          (setq raw (strcat raw (cdr item)))
-        )
-      )
-      (if (and (assoc 1 ed) (= (type (cdr (assoc 1 ed))) 'STR))
-        (setq raw (cdr (assoc 1 ed)))
-      )
-    )
-    (setq len (strlen raw) i 1 loopP T)
-    (while (and loopP (<= i len))
-      (setq ch  (substr raw i 1)
-            sec (if (< i len) (substr raw (1+ i) 1) ""))
-      (cond
-        ((= ch "{") (setq i (1+ i)))
-        ((and (= ch "\\") (member sec '("F" "f" "W" "w" "H" "h" "C" "c" "T" "t" "Q" "q" "A" "a" "p")))
-         (setq semi (vl-string-search ";" raw (1- i)))
-         (if semi (setq i (+ semi 2)) (setq loopP nil)))
-        ((and (= ch "\\") (member sec '("L" "l" "O" "o" "K" "k")))
-         (setq i (+ i 2)))
-        (T (setq loopP nil))
-      )
-    )
-    (substr raw i)
-  )
-
-  ;; Extracts leading alphabetic prefix (e.g. "FFL27.80" -> "FFL", "RFL27.30" -> "RFL")
-  (defun extract-prefix (s / len i ch out)
-    (setq s (tb:trim s) len (strlen s) i 1 out "")
-    (while (<= i len)
-      (setq ch (strcase (substr s i 1)))
-      (if (and (>= (ascii ch) 65) (<= (ascii ch) 90))
-        (setq out (strcat out ch) i (1+ i))
-        (setq i (1+ len))
-      )
-    )
-    out
-  )
-
-  (defun pick-source-text (promptStr / loop sel e pt ssPick picked)
-    (setq loop T picked nil)
-    (while loop
-      (setq sel (entsel promptStr))
-      (if sel
-        (progn
-          (setq e  (car sel)
-                pt (cadr sel))
-          (if (member (cdr (assoc 0 (entget e))) '("TEXT" "MTEXT"))
-            (setq picked e loop nil)
-            (if (setq ssPick (ssget pt '((0 . "TEXT,MTEXT"))))
-              (setq picked (ssname ssPick 0) loop nil)
-              (princ "\n>> Selected object is not TEXT or MTEXT. Try again.")
-            )
-          )
-        )
-        (setq loop nil)
-      )
-    )
-    picked
-  )
-
-  ;; =========================================================================
-  ;; 3. ROTATED TEXT BOUNDING BOX & DUPLICATE CHECK ENGINE
-  ;; =========================================================================
-  ;; Checks if a 4-corner closed LWPOLYLINE already exists right at the text center
-  (defun has-box-already-p (wcsCen lay hgt / rad ss i e ed pts cx cy found)
-    (setq rad (* hgt 0.8) found nil)
-    (setq ss (ssget "_X" (list '(0 . "LWPOLYLINE") (cons 8 (tb:esc lay)) '(90 . 4) (cons 410 (getvar "CTAB")))))
-    (if ss
-      (progn
-        (setq i 0)
-        (while (and (< i (sslength ss)) (not found))
-          (setq e   (ssname ss i)
-                ed  (entget e)
-                pts nil)
-          (foreach item ed
-            (if (= (car item) 10)
-              (setq pts (cons (cdr item) pts))
-            )
-          )
-          (if (= (length pts) 4)
-            (progn
-              (setq cx (/ (apply '+ (mapcar 'car pts)) 4.0)
-                    cy (/ (apply '+ (mapcar 'cadr pts)) 4.0))
-              (if (< (distance (list (car wcsCen) (cadr wcsCen)) (list cx cy)) rad)
-                (setq found T)
-              )
-            )
-          )
-          (setq i (1+ i))
-        )
-      )
-    )
-    found
-  )
-
-  ;; Computes exact rotated 4 corners around TEXT or MTEXT and draws LWPOLYLINE box
-  (defun draw-rotated-box (ent padFactor / ed typ lay col trueCol hgt pad
-                                           p10 ang tb bMin bMax x1 y1 x2 y2
-                                           w h att dxMin dxMax dyMin dyMax
-                                           ux uy vx vy c1 c2 c3 c4 wcsCen dxfData)
-    (setq ed      (entget ent)
-          typ     (cdr (assoc 0 ed))
-          lay     (cdr (assoc 8 ed))
-          col     (if (assoc 62 ed) (cdr (assoc 62 ed)) nil)
-          trueCol (if (assoc 420 ed) (cdr (assoc 420 ed)) nil)
-          hgt     (if (assoc 40 ed) (cdr (assoc 40 ed)) 1.0)
-          pad     (* hgt padFactor))
-
-    (cond
-      ;; A. Single-Line TEXT: Exact local bounding box via native (textbox ed)
-      ((= typ "TEXT")
-       (setq p10 (cdr (assoc 10 ed))
-             ang (if (assoc 50 ed) (cdr (assoc 50 ed)) 0.0)
-             tb  (textbox ed))
-       (if tb
-         (progn
-           (setq bMin (car tb)
-                 bMax (cadr tb)
-                 x1   (- (car bMin) pad)
-                 y1   (- (cadr bMin) pad)
-                 x2   (+ (car bMax) pad)
-                 y2   (+ (cadr bMax) pad)
-                 ux   (cos ang)
-                 uy   (sin ang)
-                 vx   (- (sin ang))
-                 vy   (cos ang))
-           (setq c1 (trans (list (+ (car p10) (* x1 ux) (* y1 vx)) (+ (cadr p10) (* x1 uy) (* y1 vy)) (caddr p10)) ent 0)
-                 c2 (trans (list (+ (car p10) (* x2 ux) (* y1 vx)) (+ (cadr p10) (* x2 uy) (* y1 vy)) (caddr p10)) ent 0)
-                 c3 (trans (list (+ (car p10) (* x2 ux) (* y2 vx)) (+ (cadr p10) (* x2 uy) (* y2 vy)) (caddr p10)) ent 0)
-                 c4 (trans (list (+ (car p10) (* x1 ux) (* y2 vx)) (+ (cadr p10) (* x1 uy) (* y2 vy)) (caddr p10)) ent 0))
-         )
-       ))
-
-      ;; B. MTEXT: Exact rotated bounding box from DXF 42 (ActualWidth), DXF 43 (ActualHeight) & DXF 71 (Attachment)
-      ((= typ "MTEXT")
-       (setq p10 (cdr (assoc 10 ed))
-             w   (if (assoc 42 ed) (cdr (assoc 42 ed)) (* hgt 4.0))
-             h   (if (assoc 43 ed) (cdr (assoc 43 ed)) hgt)
-             att (if (assoc 71 ed) (cdr (assoc 71 ed)) 1)
-             ang (if (assoc 11 ed)
-                   (angle '(0.0 0.0 0.0) (cdr (assoc 11 ed)))
-                   (if (assoc 50 ed) (cdr (assoc 50 ed)) 0.0)))
-
-       ;; Horizontal local bounds relative to MTEXT insertion point
-       (cond
-         ((member att '(1 4 7)) (setq dxMin (- pad)            dxMax (+ w pad)))
-         ((member att '(2 5 8)) (setq dxMin (- (/ w -2.0) pad) dxMax (+ (/ w 2.0) pad)))
-         (T                     (setq dxMin (- (- w) pad)      dxMax pad))
-       )
-       ;; Vertical local bounds relative to MTEXT insertion point
-       (cond
-         ((member att '(1 2 3)) (setq dyMin (- (- h) pad)      dyMax pad))
-         ((member att '(4 5 6)) (setq dyMin (- (/ h -2.0) pad) dyMax (+ (/ h 2.0) pad)))
-         (T                     (setq dyMin (- pad)            dyMax (+ h pad)))
-       )
-
-       (setq ux (cos ang) uy (sin ang)
-             vx (- (sin ang)) vy (cos ang))
-
-       (setq c1 (list (+ (car p10) (* dxMin ux) (* dyMin vx)) (+ (cadr p10) (* dxMin uy) (* dyMin vy)) 0.0)
-             c2 (list (+ (car p10) (* dxMax ux) (* dyMin vx)) (+ (cadr p10) (* dxMax uy) (* dyMin vy)) 0.0)
-             c3 (list (+ (car p10) (* dxMax ux) (* dyMax vx)) (+ (cadr p10) (* dxMax uy) (* dyMax vy)) 0.0)
-             c4 (list (+ (car p10) (* dxMin ux) (* dyMax vx)) (+ (cadr p10) (* dxMin uy) (* dyMax vy)) 0.0)))
-    )
-
-    (if (and c1 c2 c3 c4)
-      (progn
-        (setq wcsCen (list (/ (+ (car c1) (car c3)) 2.0)
-                           (/ (+ (cadr c1) (cadr c3)) 2.0)
-                           0.0))
-        (if (has-box-already-p wcsCen lay hgt)
-          "SKIPPED"
+        (setq dotPos (vl-string-search "." s))
+        (if (null dotPos)
           (progn
-            (setq dxfData
-              (append
-                (list '(0 . "LWPOLYLINE")
-                      '(100 . "AcDbEntity")
-                      (cons 8 lay))
-                (if col (list (cons 62 col)) nil)
-                (if trueCol (list (cons 420 trueCol)) nil)
-                (list '(100 . "AcDbPolyline")
-                      '(90 . 4)
-                      '(70 . 1)
-                      (cons 43 boxWidth)
-                      (list 10 (car c1) (cadr c1))
-                      (list 10 (car c2) (cadr c2))
-                      (list 10 (car c3) (cadr c3))
-                      (list 10 (car c4) (cadr c4)))
-              )
-            )
-            (if (entmake dxfData) "CREATED" nil)
+            (setq s (strcat s "."))
+            (repeat dec (setq s (strcat s "0")))
           )
-        )
-      )
-      nil
-    )
-  )
-
-  ;; =========================================================================
-  ;; 4. INTERACTIVE POPUP DIALOG (DCL) & CLI FALLBACK
-  ;; =========================================================================
-  (defun tb:writeDCL (path / fh)
-    (if (setq fh (open path "w"))
-      (progn
-        (write-line "tbox : dialog {" fh)
-        (write-line "  label = \"TBOX - Select Similar Text & Draw Box Around Text\";" fh)
-        (write-line "  : boxed_column {" fh)
-        (write-line "    label = \"1. Reference Text Selected\";" fh)
-        (write-line "    : text { key = \"srclay\"; label = \"Layer:\"; width = 46; }" fh)
-        (write-line "    : edit_box { key = \"srctxt\"; label = \"Sample Text:\"; edit_width = 34; is_enabled = false; }" fh)
-        (write-line "  }" fh)
-        (write-line "  : boxed_column {" fh)
-        (write-line "    label = \"2. Box Padding & Prefix Filter\";" fh)
-        (write-line "    : edit_box { key = \"offset\"; label = \"Box Margin / Offset Factor (x Text Height):\"; edit_width = 10; }" fh)
-        (write-line "    : toggle { key = \"matchpre\"; label = \"Only box texts with same prefix (e.g. FFL* or RFL*)\"; }" fh)
-        (write-line "  }" fh)
-        (write-line "  : boxed_radio_column {" fh)
-        (write-line "    label = \"3. Select Similar Scope\";" fh)
-        (write-line "    : radio_button { key = \"sc_layer\";  label = \"All Similar Text on Same Layer (Entire Drawing)\"; }" fh)
-        (write-line "    : radio_button { key = \"sc_window\"; label = \"Window / Select on Screen (Filtered to Same Layer)\"; }" fh)
-        (write-line "    : radio_button { key = \"sc_single\"; label = \"Only the Picked Reference Text\"; }" fh)
-        (write-line "  }" fh)
-        (write-line "  spacer;" fh)
-        (write-line "  ok_cancel;" fh)
-        (write-line "  errtile;" fh)
-        (write-line "}" fh)
-        (close fh)
-        T
-      )
-      nil
-    )
-  )
-
-  (defun tb:runDialog ( / res)
-    (setq res nil dclFile (tb:tmpName))
-    (if (tb:writeDCL dclFile)
-      (progn
-        (setq dclId (load_dialog dclFile))
-        (if (and dclId (>= dclId 1) (new_dialog "tbox" dclId))
           (progn
-            (set_tile "srclay" (strcat "Layer: " srcLayer "  |  Prefix: " (if (/= srcPrefix "") (strcat srcPrefix "*") "Any")))
-            (set_tile "srctxt" srcTxt)
-            (set_tile "offset" offFactorStr)
-            (set_tile "matchpre" matchPrefix)
-            (if (= srcPrefix "") (mode_tile "matchpre" 1) (mode_tile "matchpre" 0))
-
-            (set_tile "sc_layer"  (if (= scopeMode "LAYER")  "1" "0"))
-            (set_tile "sc_window" (if (= scopeMode "WINDOW") "1" "0"))
-            (set_tile "sc_single" (if (= scopeMode "SINGLE") "1" "0"))
-
-            (action_tile "accept"
-              (strcat
-                "(setq offFactorStr (tb:trim (get_tile \"offset\")) "
-                "matchPrefix (get_tile \"matchpre\") "
-                "scopeMode (cond ((= (get_tile \"sc_window\") \"1\") \"WINDOW\") ((= (get_tile \"sc_single\") \"1\") \"SINGLE\") (T \"LAYER\"))) "
-                "(if (or (= offFactorStr \"\") (null (distof offFactorStr)) (< (distof offFactorStr) 0.0)) "
-                "(set_tile \"error\" \"Please enter a valid positive offset factor (e.g. 0.35).\") "
-                "(done_dialog 1))"))
-
-            (action_tile "cancel" "(done_dialog 0)")
-            (setq res (start_dialog))
+            (setq fracLen (- (strlen s) dotPos 1))
+            (while (< fracLen dec)
+              (setq s       (strcat s "0")
+                    fracLen (1+ fracLen))
+            )
           )
         )
       )
     )
-    (tb:cleanup)
-    res
+    s
   )
 
-  (defun tb:askCmdLine ( / ans)
-    (setq ans (getreal (strcat "\nSpecify box margin factor (x Text Height) <" offFactorStr ">: ")))
-    (if ans (setq offFactorStr (rtos ans 2 2)))
-    (initget "Layer Window Single")
-    (setq ans (getkword "\nApply to [Layer all/Window on layer/Single] <Layer>: "))
-    (setq scopeMode (cond ((= ans "Window") "WINDOW") ((= ans "Single") "SINGLE") (T "LAYER")))
-    1
-  )
-
-  ;; =========================================================================
-  ;; 5. MAIN EXECUTION WORKFLOW
-  ;; =========================================================================
-  (princ "\nCommand: TBOX (Select Similar Text & Draw Box Around Text)")
-
-  (setq srcEnt (pick-source-text "\nClick reference TEXT or MTEXT (e.g. FFL27.80 or RFL27.30): "))
-  (if (not srcEnt)
-    (princ "\n>> Nothing selected. TBOX cancelled.")
-    (progn
-      (setq srcData      (entget srcEnt)
-            srcType      (cdr (assoc 0 srcData))
-            srcLayer     (cdr (assoc 8 srcData))
-            srcTxt       (get-clean-text srcData)
-            srcPrefix    (extract-prefix srcTxt)
-            offFactorStr (rtos defOffFactor 2 2)
-            matchPrefix  (if (/= srcPrefix "") "1" "0")
-            scopeMode    "LAYER")
-
-      (setq dlgOK nil)
-      (if (boundp 'load_dialog)
-        (setq dlgOK (tb:runDialog))
-      )
-      (if (null dlgOK)
-        (setq dlgOK (tb:askCmdLine))
-      )
-
-      (if (/= dlgOK 1)
-        (princ "\n>> TBOX cancelled.")
-        (progn
-          (setq offFactor (distof offFactorStr))
-          (setq filt (list '(0 . "TEXT,MTEXT") (cons 8 (tb:esc srcLayer))))
-
-          (cond
-            ((= scopeMode "SINGLE")
-             (setq ss (ssadd srcEnt (ssadd))))
-
-            ((= scopeMode "WINDOW")
-             (princ (strcat "\n>> Select similar texts on layer [" srcLayer "] (or press Enter for all on layer): "))
-             (setq ss (ssget filt))
-             (if (not ss)
-               (setq ss (ssget "_X" (append filt (list (cons 410 (getvar "CTAB"))))))
-             ))
-
-            (T
-             (setq ss (ssget "_X" (append filt (list (cons 410 (getvar "CTAB")))))))
-          )
-
-          (if ss
-            (progn
-              (command "_.UNDO" "_Begin")
-              (setq i 0 cnt 0 skipped 0)
-              (while (< i (sslength ss))
-                (setq e    (ssname ss i)
-                      ed   (entget e)
-                      eTxt (get-clean-text ed))
-
-                ;; Check optional prefix match (e.g., only FFL* or RFL*)
-                (if (or (= matchPrefix "0")
-                        (= srcPrefix "")
-                        (= (extract-prefix eTxt) srcPrefix))
-                  (progn
-                    (setq status (draw-rotated-box e offFactor))
-                    (cond
-                      ((= status "CREATED") (setq cnt (1+ cnt)))
-                      ((= status "SKIPPED") (setq skipped (1+ skipped)))
-                    )
+  (defun tb:copy-clip (txt / html pw clip ok tmpDir tmp fh wsh cmd pid safeTxt i ch tmpEnt)
+    (if (boundp 'jrk:copy-clip)
+      (jrk:copy-clip txt)
+      (progn
+        (setq ok nil)
+        ;; Layer 1: htmlfile COM
+        (setq html (vl-catch-all-apply 'vlax-create-object (list "htmlfile")))
+        (if (and html (not (vl-catch-all-error-p html)))
+          (progn
+            (setq pw (vl-catch-all-apply 'vlax-get (list html 'ParentWindow)))
+            (if (and pw (not (vl-catch-all-error-p pw)))
+              (progn
+                (setq clip (vl-catch-all-apply 'vlax-get (list pw 'ClipboardData)))
+                (if (and clip (not (vl-catch-all-error-p clip)))
+                  (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list clip 'setData "Text" txt))))
+                    (setq ok T)
                   )
                 )
-                (setq i (1+ i))
               )
-              (command "_.UNDO" "_End")
-              (princ (strcat "\n>> TBOX Complete! Created " (itoa cnt)
-                             " rotated box(es) on layer [" srcLayer "]"
-                             (if (> skipped 0) (strcat " (" (itoa skipped) " existing box(es) skipped).") ".")))
             )
-            (princ "\n>> No matching text objects found.")
+            (vl-catch-all-apply 'vlax-release-object (list html))
+          )
+        )
+        ;; Layer 2: WScript.Shell + clip.exe
+        (if (not ok)
+          (progn
+            (setq tmpDir (cond ((getenv "TEMP")) ((getenv "TMP")) ((getvar "TEMPPREFIX")) (".")))
+            (setq tmp (if (boundp 'vl-filename-mktemp)
+                        (vl-filename-mktemp "jrk_clip_" tmpDir ".txt")
+                        (strcat tmpDir "\\jrk_clip.txt")))
+            (if (and tmp (setq fh (open tmp "w")))
+              (progn
+                (princ txt fh)
+                (close fh)
+                (setq cmd (strcat "cmd.exe /c clip < \"" tmp "\""))
+                (setq wsh (vl-catch-all-apply 'vlax-create-object (list "WScript.Shell")))
+                (if (and wsh (not (vl-catch-all-error-p wsh)))
+                  (progn
+                    (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))))
+                      (setq ok T)
+                    )
+                    (vl-catch-all-apply 'vlax-release-object (list wsh))
+                  )
+                )
+                (if (boundp 'vl-file-delete) (vl-file-delete tmp))
+              )
+            )
+          )
+        )
+        ;; Layer 3: startapp + clip.exe (AutoCAD LT 2024+ / Windows 11 safe)
+        (if (and (not ok) (boundp 'startapp))
+          (progn
+            (setq safeTxt "" i 1)
+            (while (<= i (strlen txt))
+              (setq ch (substr txt i 1))
+              (if (not (member ch '("\"" "&" "|" "<" ">" "^" "%")))
+                (setq safeTxt (strcat safeTxt ch))
+              )
+              (setq i (1+ i))
+            )
+            (setq pid (vl-catch-all-apply 'startapp
+                        (list "cmd.exe" (strcat "/c <nul set /p=\"" safeTxt "\" | clip"))))
+            (if (and pid (not (vl-catch-all-error-p pid)) (numberp pid) (> pid 0))
+              (setq ok T)
+            )
+          )
+        )
+        ;; Layer 4: Native CAD _.COPYCLIP fallback
+        (if (not ok)
+          (if (entmake (list '(0 . "TEXT") '(10 0.0 0.0 0.0) '(40 . 1.0) (cons 1 txt)))
+            (progn
+              (setq tmpEnt (entlast))
+              (vl-catch-all-apply '(lambda () (command "_.COPYCLIP" tmpEnt "")))
+              (entdel tmpEnt)
+              (setq ok T)
+            )
+          )
+        )
+        ok
+      )
+    )
+  )
+
+  ;; =========================================================================
+  ;; 3. PURE DXF POLYLINE GEOMETRY, SHOELACE AREA & CENTROID IN WCS
+  ;; =========================================================================
+  (defun tb:get-poly-pts-wcs (ent / ed typ pts wcsPt sub subEd)
+    (setq ed  (entget ent)
+          typ (cdr (assoc 0 ed))
+          pts nil)
+    (cond
+      ((= typ "LWPOLYLINE")
+       (foreach item ed
+         (if (= (car item) 10)
+           (progn
+             (setq wcsPt (trans (list (cadr item) (caddr item) 0.0) ent 0))
+             (setq pts (append pts (list (list (car wcsPt) (cadr wcsPt) 0.0))))
+           )
+         )
+       ))
+      ((= typ "POLYLINE")
+       (setq sub (entnext ent))
+       (while (and sub (/= (cdr (assoc 0 (setq subEd (entget sub)))) "SEQEND"))
+         (if (= (cdr (assoc 0 subEd)) "VERTEX")
+           (progn
+             (setq wcsPt (trans (cdr (assoc 10 subEd)) sub 0))
+             (setq pts (append pts (list (list (car wcsPt) (cadr wcsPt) 0.0))))
+           )
+         )
+         (setq sub (entnext sub))
+       ))
+    )
+    ;; Remove duplicate consecutive closing point if present
+    (if (and (>= (length pts) 2)
+             (< (distance (car pts) (last pts)) 1.0e-6))
+      (setq pts (reverse (cdr (reverse pts))))
+    )
+    pts
+  )
+
+  ;; Shoelace area in drawing units^2
+  (defun tb:poly-area-wcs (pts / n k p1 p2 sum)
+    (setq n   (length pts)
+          sum 0.0
+          k   0)
+    (if (>= n 3)
+      (progn
+        (while (< k n)
+          (setq p1  (nth k pts)
+                p2  (nth (rem (1+ k) n) pts)
+                sum (+ sum (- (* (car p1) (cadr p2)) (* (car p2) (cadr p1))))
+                k   (1+ k))
+        )
+        (/ (abs sum) 2.0)
+      )
+      0.0
+    )
+  )
+
+  ;; True geometric centroid (or vertex average fallback) in 2D WCS
+  (defun tb:poly-centroid-wcs (pts / n k p1 p2 cross areaSum cxSum cySum cx cy)
+    (setq n (length pts))
+    (cond
+      ((>= n 3)
+       (setq areaSum 0.0 cxSum 0.0 cySum 0.0 k 0)
+       (while (< k n)
+         (setq p1      (nth k pts)
+               p2      (nth (rem (1+ k) n) pts)
+               cross   (- (* (car p1) (cadr p2)) (* (car p2) (cadr p1)))
+               areaSum (+ areaSum cross)
+               cxSum   (+ cxSum (* (+ (car p1) (car p2)) cross))
+               cySum   (+ cySum (* (+ (cadr p1) (cadr p2)) cross))
+               k       (1+ k))
+       )
+       (if (> (abs areaSum) 1.0e-8)
+         (setq cx (/ cxSum (* 3.0 areaSum))
+               cy (/ cySum (* 3.0 areaSum)))
+         (setq cx (/ (apply '+ (mapcar 'car pts)) (float n))
+               cy (/ (apply '+ (mapcar 'cadr pts)) (float n)))
+       )
+       (list cx cy 0.0))
+      ((> n 0)
+       (list (caar pts) (cadar pts) 0.0))
+      (T '(0.0 0.0 0.0))
+    )
+  )
+
+  (defun tb:make-shifted-pts (pts dx dy)
+    (mapcar '(lambda (p) (list (+ (car p) dx) (+ (cadr p) dy) 0.0)) pts)
+  )
+
+  (defun tb:draw-poly-wcs (pts lay isClosed / dxfList)
+    (setq dxfList
+      (append
+        (list '(0 . "LWPOLYLINE")
+              '(100 . "AcDbEntity")
+              (cons 8 lay)
+              '(100 . "AcDbPolyline")
+              (cons 90 (length pts))
+              (cons 70 (if isClosed 1 0))
+              '(43 . 0.0))
+        (mapcar '(lambda (p) (list 10 (car p) (cadr p))) pts)
+      )
+    )
+    (entmake dxfList)
+    (entlast)
+  )
+
+  (defun tb:draw-text-wcs (str pt hgt lay)
+    (entmake (list '(0 . "TEXT")
+                   '(100 . "AcDbEntity")
+                   (cons 8 lay)
+                   '(100 . "AcDbText")
+                   (list 10 (car pt) (cadr pt) 0.0)
+                   (list 11 (car pt) (cadr pt) 0.0)
+                   (cons 40 hgt)
+                   (cons 1 str)
+                   '(50 . 0.0)
+                   '(41 . 0.85)
+                   '(72 . 1)
+                   '(73 . 2)))
+    (entlast)
+  )
+
+  ;; Creates a CAD Block definition from `pts` (origin at centroid) when makeBlock = "Yes"
+  (defun tb:create-house-block (blkName pts lay / cen relPts blkRec blkEnt vEnt)
+    (if (or (null blkName) (= blkName "") (< (length pts) 3))
+      nil
+      (progn
+        (setq cen    (tb:poly-centroid-wcs pts)
+              relPts (mapcar '(lambda (p) (list (- (car p) (car cen)) (- (cadr p) (cadr cen)) 0.0)) pts))
+        (if (tblsearch "BLOCK" blkName)
+          (progn
+            (setq blkEnt (tb:draw-poly-wcs relPts lay T))
+            (if blkEnt
+              (vl-catch-all-apply
+                '(lambda ()
+                   (command "_.BLOCK" blkName "_Y" '(0.0 0.0 0.0) blkEnt "")
+                 )
+              )
+            )
+            (if (tblsearch "BLOCK" blkName) blkName nil)
+          )
+          (progn
+            (setq blkRec
+              (entmake (list '(0 . "BLOCK")
+                             '(100 . "AcDbEntity")
+                             (cons 8 lay)
+                             '(100 . "AcDbBlock")
+                             (cons 2 blkName)
+                             '(70 . 0)
+                             '(10 0.0 0.0 0.0))))
+            (if blkRec
+              (progn
+                (entmake
+                  (append
+                    (list '(0 . "LWPOLYLINE")
+                          '(100 . "AcDbEntity")
+                          (cons 8 lay)
+                          '(100 . "AcDbPolyline")
+                          (cons 90 (length relPts))
+                          '(70 . 1)
+                          '(43 . 0.0))
+                    (mapcar '(lambda (p) (list 10 (car p) (cadr p))) relPts)
+                  )
+                )
+                (setq vEnt (entmake '((0 . "ENDBLK") (100 . "AcDbBlockEnd"))))
+                (if vEnt blkName nil)
+              )
+              nil
+            )
           )
         )
       )
     )
   )
 
-  (if oldCmd (setvar "CMDECHO" oldCmd))
+  ;; =========================================================================
+  ;; 4. MAIN INTERACTIVE WORKFLOW
+  ;; =========================================================================
+  (princ "\n==================================================================")
+  (princ "\n  TBOX : House / Lot Polyline Counter, Block Builder & Sq.Ft Area")
+  (princ "\n  - Click House/Lot Polyline -> Converts Area to sq.ft")
+  (princ "\n  - Click destinations to stamp numbered copy + sq.ft area")
+  (princ "\n==================================================================")
+
+  (setq srcPts nil srcAreaRaw 0.0 srcAreaM2 0.0 srcAreaFt2 0.0 totalCopied 0)
+
+  ;; Step 1: Pick House/Lot Polyline (with live configuration options)
+  (while (null srcPts)
+    (initget "Start Prefix Mode Block Units Clip Exit")
+    (setq sel (entsel
+      (strcat "\nSelect House/Lot Polyline [Start/Prefix/Mode/Block/Units/Clip/Exit] "
+              "(Next:" tagPrefix (tb:fmt-int-pad curNum padLen)
+              ", Mode:" placeMode
+              ", Block:" makeBlock
+              ", Units:" unitsMode "): ")))
+
+    (cond
+      ((or (= sel "Exit") (null sel))
+       (setq srcPts 'CANCEL))
+
+      ((= sel "Start")
+       (initget 6)
+       (setq nVal (getint (strcat "\nEnter starting number <" (itoa curNum) ">: ")))
+       (if nVal (setq startNum nVal curNum nVal)))
+
+      ((= sel "Prefix")
+       (setq ans (getstring T (strcat "\nEnter number prefix (e.g. #, H-, LOT ) <" tagPrefix ">: ")))
+       (if ans (setq tagPrefix ans)))
+
+      ((= sel "Mode")
+       (initget "Copy Block")
+       (setq ans (getkword "\nStamp mode [Copy polyline+tags / Block insert] <Copy>: "))
+       (setq placeMode (if (= ans "Block") "BLOCK" "COPY")))
+
+      ((= sel "Block")
+       (setq makeBlock (if (= makeBlock "Yes") "No" "Yes"))
+       (princ (strcat "\n>> Create CAD Block from house polyline: " makeBlock)))
+
+      ((= sel "Units")
+       (initget "Auto Millimeters Meters")
+       (setq ans (getkword "\nDrawing units [Auto / Millimeters (1m=1000) / Meters (1m=1)] <Auto>: "))
+       (cond
+         ((= ans "Meters")      (setq unitsMode "M"    unitsPerM 1.0))
+         ((= ans "Millimeters") (setq unitsMode "MM"   unitsPerM 1000.0))
+         (T                     (setq unitsMode "AUTO" unitsPerM 1000.0))
+       ))
+
+      ((= sel "Clip")
+       (initget "Area Count Off")
+       (setq ans (getkword "\nCopy to Windows Clipboard [Area (sq.ft) / Count / Off] <Area>: "))
+       (setq copyToClip (cond ((= ans "Count") "Count") ((= ans "Off") "Off") (T "Area"))))
+
+      ((listp sel)
+       (setq ent (car sel)
+             ed  (entget ent))
+       (if (member (cdr (assoc 0 ed)) '("LWPOLYLINE" "POLYLINE"))
+         (progn
+           (setq srcPts     (tb:get-poly-pts-wcs ent)
+                 srcAreaRaw (tb:poly-area-wcs srcPts)
+                 txtLay     (cdr (assoc 8 ed)))
+           (if (< (length srcPts) 3)
+             (progn
+               (princ "\n>> Polyline needs at least 3 vertices to compute area. Pick another polyline.")
+               (setq srcPts nil)
+             )
+             (progn
+               (if (= unitsMode "AUTO")
+                 (if (> srcAreaRaw 50000.0)
+                   (setq unitsPerM 1000.0)
+                   (setq unitsPerM 1.0)
+                 )
+               )
+               ;; 1 m^2 = 10.76391041673611 sq.ft
+               (setq srcAreaM2  (/ srcAreaRaw (* unitsPerM unitsPerM))
+                     srcAreaFt2 (* srcAreaM2 10.76391041673611))
+               (if (null txtHgt)
+                 (setq txtHgt (* 2.5 unitsPerM))
+               )
+               (princ (strcat "\n>> House Area: " (tb:fmt-num srcAreaFt2 2) " sq.ft"
+                              " (" (tb:fmt-num srcAreaM2 2) " m2)"
+                              " | Units: " (if (= unitsPerM 1000.0) "mm" "m")))
+             )
+           )
+         )
+         (princ "\n>> Please select a LWPOLYLINE or POLYLINE.")
+       ))
+    )
+  )
+
+  ;; Step 2: Interactive Cursor-Following Placement & Counting Loop
+  (if (and (listp srcPts) (>= (length srcPts) 3))
+    (progn
+      (command "_.UNDO" "_Begin")
+      (setq undoStarted T)
+
+      (if (= makeBlock "Yes")
+        (setq blkDefName (tb:create-house-block
+                           (strcat blkNamePrefix (tb:fmt-int-pad curNum padLen))
+                           srcPts
+                           txtLay))
+        (setq blkDefName nil)
+      )
+
+      (setq prevPt (tb:poly-centroid-wcs srcPts)
+            grState T)
+
+      (while grState
+        (setq txtStr  (strcat tagPrefix (tb:fmt-int-pad curNum padLen))
+              areaStr (strcat (tb:fmt-num srcAreaFt2 2) " sq.ft"))
+
+        (princ (strcat "\r[" txtStr " | " areaStr "] Click destination point (or Enter to finish): "))
+        (setq grPt (grread T 15 0))
+
+        (cond
+          ;; Mouse movement -> draw live rubber-band polyline preview following cursor
+          ((= (car grPt) 5)
+           (setq curPt (cadr grPt)
+                 dx    (- (car curPt) (car prevPt))
+                 dy    (- (cadr curPt) (cadr prevPt))
+                 grPts (tb:make-shifted-pts srcPts dx dy))
+           (redraw)
+           (if (> (length grPts) 1)
+             (progn
+               (setq i 0)
+               (while (< i (1- (length grPts)))
+                 (grdraw (trans (nth i grPts) 0 1) (trans (nth (1+ i) grPts) 0 1) 3 0)
+                 (setq i (1+ i))
+               )
+               (grdraw (trans (last grPts) 0 1) (trans (car grPts) 0 1) 3 0)
+             )
+           ))
+
+          ;; Left click (3) -> stamp numbered copy + sq.ft area
+          ((= (car grPt) 3)
+           (setq curPt    (cadr grPt)
+                 dx       (- (car curPt) (car prevPt))
+                 dy       (- (cadr curPt) (cadr prevPt))
+                 shiftPts (tb:make-shifted-pts srcPts dx dy)
+                 dispPt   (tb:poly-centroid-wcs shiftPts)
+                 stepEnts nil)
+
+           (if (= placeMode "BLOCK")
+             (progn
+               (if (= makeBlock "Yes")
+                 (setq blkDefName (tb:create-house-block
+                                    (strcat blkNamePrefix (tb:fmt-int-pad curNum padLen))
+                                    shiftPts
+                                    txtLay))
+               )
+               (if (and blkDefName (tblsearch "BLOCK" blkDefName))
+                 (progn
+                   (entmake (list '(0 . "INSERT")
+                                  '(100 . "AcDbEntity")
+                                  (cons 8 txtLay)
+                                  '(100 . "AcDbBlockReference")
+                                  (cons 2 blkDefName)
+                                  (list 10 (car dispPt) (cadr dispPt) 0.0)
+                                  '(41 . 1.0) '(42 . 1.0) '(43 . 1.0) '(50 . 0.0)))
+                   (setq stepEnts (cons (entlast) stepEnts))
+                 )
+                 (setq stepEnts (cons (tb:draw-poly-wcs shiftPts txtLay T) stepEnts))
+               )
+             )
+             (progn
+               (setq newPolyEnt (tb:draw-poly-wcs shiftPts txtLay T))
+               (if newPolyEnt (setq stepEnts (cons newPolyEnt stepEnts)))
+               (if (= makeBlock "Yes")
+                 (tb:create-house-block
+                   (strcat blkNamePrefix (tb:fmt-int-pad curNum padLen))
+                   shiftPts
+                   txtLay)
+               )
+             )
+           )
+
+           ;; Stamp Count Number + sq.ft Area text
+           (if (= showAreaTag "Yes")
+             (progn
+               (setq stepEnts (cons (tb:draw-text-wcs
+                                      txtStr
+                                      (list (car dispPt) (+ (cadr dispPt) (* txtHgt 0.7)) 0.0)
+                                      txtHgt txtLay) stepEnts))
+               (setq stepEnts (cons (tb:draw-text-wcs
+                                      areaStr
+                                      (list (car dispPt) (- (cadr dispPt) (* txtHgt 0.7)) 0.0)
+                                      (* txtHgt 0.85) txtLay) stepEnts))
+             )
+             (setq stepEnts (cons (tb:draw-text-wcs txtStr dispPt txtHgt txtLay) stepEnts))
+           )
+
+           (setq totalCopied (1+ totalCopied)
+                 curNum      (1+ curNum))
+
+           (cond
+             ((= copyToClip "Area")  (tb:copy-clip (tb:fmt-num srcAreaFt2 2)))
+             ((= copyToClip "Count") (tb:copy-clip (itoa totalCopied)))
+           )
+
+           (princ (strcat "\n>> [" txtStr "] Placed (" areaStr ") | Total Copied: " (itoa totalCopied))))
+
+          ;; Enter (car=2 and cadr=13) or Right-click/Cancel (car=2 and cadr=27) -> exit loop
+          ((and (= (car grPt) 2) (member (cadr grPt) '(13 27)))
+           (setq grState nil))
+        )
+      )
+
+      (redraw)
+      (command "_.UNDO" "_End")
+      (setq undoStarted nil)
+      (princ (strcat "\n>> TBOX Finished! Total copied: " (itoa totalCopied)
+                     " | Area per unit: " (tb:fmt-num srcAreaFt2 2) " sq.ft."))
+    )
+  )
+
+  (if oldDimzin (setvar "DIMZIN" oldDimzin))
+  (if oldOs     (setvar "OSMODE" oldOs))
+  (if oldCmd    (setvar "CMDECHO" oldCmd))
   (princ)
 )
 
 ;; Quick Command Aliases
-(defun c:boxsim ()  (c:tbox))
-(defun c:textbox () (c:tbox))
-(princ "\nTBOX loaded. Type TBOX, BOXSIM, or TEXTBOX to run.")
+(defun c:housecount () (c:tbox))
+(defun c:ftarea ()     (c:tbox))
+(princ "\nTBOX loaded. Type TBOX, HOUSECOUNT, or FTAREA to run.")
 (princ)

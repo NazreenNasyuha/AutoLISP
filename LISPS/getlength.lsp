@@ -7,42 +7,6 @@
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
 ;;; ==========================================================================
-;;;
-;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
-;;; --------------------------------------------------------------------------
-;;; In civil drafting, estimating, and hydraulic design, engineers frequently
-;;; need to measure non-linear paths, pipe alignments, kerb lines, or corridor
-;;; lengths without creating throwaway polylines or cluttering the drawing with
-;;; temporary dimensions.
-;;;
-;;; GETLENGTH provides an interactive continuous distance accumulator:
-;;;   1. Prompts the drafter to click an initial start point.
-;;;   2. Interactively prompts for subsequent vertices, drawing standard rubber-
-;;;      band cursor lines from vertex to vertex.
-;;;   3. Computes 2D planar Euclidean distance (flattening elevation Z to 0.0)
-;;;      to avoid false slope-length inflation on 3D civil surveys.
-;;;   4. Scales raw drawing units (e.g. mm) to real-world engineering units (m)
-;;;      using a configurable unit divisor (`divideBy`).
-;;;   5. Automatically pipes the formatted distance directly to the Windows
-;;;      Clipboard (`clip.exe`) via a safe, isolated temporary text buffer.
-;;;   6. Gracefully loops, allowing drafters to measure multiple independent
-;;;      runs in rapid succession until pressing Enter on an empty prompt.
-;;;
-;;; DRAFTING WORKFLOW:
-;;; --------------------------------------------------------------------------
-;;;  1. Type GETLENGTH in the AutoCAD / GstarCAD command line.
-;;;  2. Click the start point of your alignment or pipe path.
-;;;  3. Click consecutive turn points or junction nodes.
-;;;  4. Press Enter to finish the path.
-;;;  5. The accumulated length is printed to the command prompt and immediately
-;;;     available on the Windows Clipboard (Ctrl+V) for Excel, Word, or BQ.
-;;;
-;;; USER SETTINGS:
-;;; --------------------------------------------------------------------------
-;;;  - divideBy : Drawing units per reporting unit (default: 1000.0 for mm -> m).
-;;;  - decimals : Precision decimal places for output string (default: 2).
-;;;  - suffix   : Unit suffix label printed to command line (default: "m").
-;;; ==========================================================================
 
 (vl-load-com)
 
@@ -71,24 +35,28 @@
   )
 
   ;; =========================================================================
-  ;; 3. ZERO-PADDED FORMATTER & HARDENED WINDOWS CLIPBOARD HELPER
+  ;; 3. ZERO-PADDED FORMATTER & 4-LAYER CLIPBOARD HELPER
   ;; =========================================================================
   (defun fmt-dec (val dec / s dotPos fracLen)
-    (if (fboundp 'jrk:fmt-dec)
+    (if (boundp 'jrk:fmt-dec)
       (jrk:fmt-dec val dec)
       (progn
-        (setq s (rtos val 2 dec)
-              dotPos (vl-string-search "." s)
-        )
-        (if (null dotPos)
+        (setvar "DIMZIN" 0)
+        (setq s (rtos val 2 dec))
+        (if (> dec 0)
           (progn
-            (setq s (strcat s "."))
-            (repeat dec (setq s (strcat s "0")))
-          )
-          (progn
-            (setq fracLen (- (strlen s) dotPos 1))
-            (while (< fracLen dec)
-              (setq s (strcat s "0") fracLen (1+ fracLen))
+            (setq dotPos (vl-string-search "." s))
+            (if (null dotPos)
+              (progn
+                (setq s (strcat s "."))
+                (repeat dec (setq s (strcat s "0")))
+              )
+              (progn
+                (setq fracLen (- (strlen s) dotPos 1))
+                (while (< fracLen dec)
+                  (setq s (strcat s "0") fracLen (1+ fracLen))
+                )
+              )
             )
           )
         )
@@ -97,11 +65,13 @@
     )
   )
 
-  (defun copy-clip (txt / html pw clip ok tmp fh wsh cmd)
-    (if (fboundp 'jrk:copy-clip)
+  (defun copy-clip (txt / html pw clip ok tmpDir tmp fh wsh cmd pid safeTxt i ch tmpEnt)
+    (if (boundp 'jrk:copy-clip)
       (jrk:copy-clip txt)
       (progn
         (setq ok nil)
+
+        ;; Layer 1: htmlfile COM ClipboardData
         (setq html (vl-catch-all-apply 'vlax-create-object (list "htmlfile")))
         (if (and html (not (vl-catch-all-error-p html)))
           (progn
@@ -119,9 +89,14 @@
             (vl-catch-all-apply 'vlax-release-object (list html))
           )
         )
+
+        ;; Layer 2: WScript.Shell synchronous clip.exe
         (if (not ok)
           (progn
-            (setq tmp (vl-filename-mktemp "jrk_clip_" (getenv "TEMP") ".txt"))
+            (setq tmpDir (cond ((getenv "TEMP")) ((getenv "TMP")) ((getvar "TEMPPREFIX")) (".")))
+            (setq tmp (if (boundp 'vl-filename-mktemp)
+                        (vl-filename-mktemp "jrk_clip_" tmpDir ".txt")
+                        (strcat tmpDir "\\jrk_clip.txt")))
             (if (and tmp (setq fh (open tmp "w")))
               (progn
                 (princ txt fh)
@@ -130,28 +105,63 @@
                 (setq wsh (vl-catch-all-apply 'vlax-create-object (list "WScript.Shell")))
                 (if (and wsh (not (vl-catch-all-error-p wsh)))
                   (progn
-                    (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))
+                    (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))))
+                      (setq ok T)
+                    )
                     (vl-catch-all-apply 'vlax-release-object (list wsh))
-                    (setq ok T)
                   )
                 )
-                (vl-catch-all-apply 'vl-file-delete (list tmp))
+                (if (boundp 'vl-file-delete) (vl-file-delete tmp))
               )
             )
           )
         )
+
+        ;; Layer 3: AutoCAD LT 2024+ & Windows 11 Safe startapp + clip.exe
+        (if (and (not ok) (boundp 'startapp))
+          (progn
+            (setq safeTxt "" i 1)
+            (while (<= i (strlen txt))
+              (setq ch (substr txt i 1))
+              (if (not (member ch '("\"" "&" "|" "<" ">" "^" "%")))
+                (setq safeTxt (strcat safeTxt ch))
+              )
+              (setq i (1+ i))
+            )
+            (setq pid (vl-catch-all-apply 'startapp
+                        (list "cmd.exe" (strcat "/c <nul set /p=\"" safeTxt "\" | clip"))))
+            (if (and pid (not (vl-catch-all-error-p pid)) (numberp pid) (> pid 0))
+              (setq ok T)
+            )
+          )
+        )
+
+        ;; Layer 4: Pure CAD Native _.COPYCLIP Fallback
+        (if (not ok)
+          (if (entmake (list '(0 . "TEXT")
+                             '(10 0.0 0.0 0.0)
+                             '(40 . 1.0)
+                             (cons 1 txt)))
+            (progn
+              (setq tmpEnt (entlast))
+              (vl-catch-all-apply 'command (list "_.COPYCLIP" tmpEnt ""))
+              (entdel tmpEnt)
+              (setq ok T)
+            )
+          )
+        )
+
         ok
       )
     )
   )
 
   ;; =========================================================================
-  ;; 4. INTERACTIVE POINT PICK & ACCUMULATION ENGINE (Rule #5 UCS -> WCS)
+  ;; 4. INTERACTIVE POINT PICK & ACCUMULATION ENGINE (UCS -> WCS)
   ;; =========================================================================
   (while (setq pt1 (getpoint "\nClick Start Point (or Enter to exit): "))
     (setq totalLen 0.0 lastPt pt1)
     (while (setq nextPt (getpoint lastPt "\nClick Next Point (or Enter to finish): "))
-      ;; Transform UCS pick points to WCS before computing 2D planar length
       (setq wLast (trans lastPt 1 0)
             wNext (trans nextPt 1 0)
             totalLen (+ totalLen (distance (list (car wLast) (cadr wLast) 0.0)

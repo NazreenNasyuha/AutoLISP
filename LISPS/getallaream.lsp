@@ -3,45 +3,15 @@
 ;;; MODULE      : getallaream.lsp
 ;;; COMMAND     : GETALLAREAM
 ;;; DESCRIPTION : Batch Polyline Area Extractor with Instant Centered Labels (m²)
-;;;               and Cumulative Total Area Output
+;;;               and Cumulative Total Area Copied to Clipboard
 ;;; AUTHOR      : Professional Infrastructure CAD Automation
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD)
-;;; ==========================================================================
-;;;
-;;; OVERVIEW & TECHNICAL SPECIFICATIONS:
-;;; --------------------------------------------------------------------------
-;;; When calculating land use zoning, sub-catchments, or building lot areas across
-;;; an entire master plan, extracting areas one polyline at a time is inefficient.
-;;;
-;;; GETALLAREAM enables rapid batch extraction:
-;;;   1. Prompts the drafter to select any number of closed polylines (window selection).
-;;;   2. Validates closure flags (`(70 . 1)`) across all selected LWPOLYLINE and
-;;;      POLYLINE entities.
-;;;   3. Computes the geometric centroid of each closed polygon by averaging its
-;;;      boundary vertices.
-;;;   4. Measures the exact surface area, converts from drawing units (mm²) to
-;;;      square metres (m²), and creates a centered Middle-Center aligned text
-;;;      annotation (`"xxx.xxx m2"`) directly in the center of each shape.
-;;;   5. Accumulates all individual areas and prints the grand total area in m²
-;;;      to the command line.
-;;;
-;;; DRAFTING WORKFLOW:
-;;; --------------------------------------------------------------------------
-;;;  1. Type GETALLAREAM in the command line.
-;;;  2. Select all closed polylines (window, crossing, or individual clicks).
-;;;  3. Press Enter. Each polygon is immediately annotated with its m² area,
-;;;     and the total combined area is displayed on the command line.
-;;;
-;;; USER SETTINGS:
-;;; --------------------------------------------------------------------------
-;;;  - txtHgt   : Text height for the generated area annotations (mm).
-;;;  - decimals : Decimal precision for the area value (default 3).
 ;;; ==========================================================================
 
 (vl-load-com)
 
-(defun c:getallaream ( / *error* ss i ent totalArea area mArea center txtHgt decimals
-                         oldCmd oldDimZin undoStarted fmt-dec get-poly-center )
+(defun c:getallaream ( / *error* ss i ent totalArea area mArea totalText center txtHgt decimals
+                         oldCmd oldDimZin undoStarted fmt-dec copy-clip get-poly-center )
 
   ;; =========================================================================
   ;; 1. USER SETTINGS & CONFIGURATION
@@ -51,16 +21,25 @@
   ;; =========================================================================
 
   ;; =========================================================================
-  ;; 2. ERROR HANDLING & SYSTEM SAFEGUARDS
+  ;; 2. ERROR HANDLING & SYSTEM SAFEGUARDS (AutoCAD 2024+ / LT & GstarCAD Safe)
   ;; =========================================================================
-  (setq oldCmd    (getvar "CMDECHO")
-        oldDimZin (getvar "DIMZIN")
+  (setq oldCmd      (getvar "CMDECHO")
+        oldDimZin   (getvar "DIMZIN")
+        undoStarted nil
   )
   (setvar "CMDECHO" 0)
   (setvar "DIMZIN" 0)
 
   (defun *error* (msg)
-    (if undoStarted (progn (command "_.UNDO" "_End") (setq undoStarted nil)))
+    (if undoStarted
+      (progn
+        (if (boundp 'command-s)
+          (vl-catch-all-apply 'command-s (list "_.UNDO" "_End"))
+          (vl-catch-all-apply 'command (list "_.UNDO" "_End"))
+        )
+        (setq undoStarted nil)
+      )
+    )
     (if oldCmd    (setvar "CMDECHO" oldCmd))
     (if oldDimZin (setvar "DIMZIN" oldDimZin))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
@@ -69,24 +48,28 @@
   )
 
   ;; =========================================================================
-  ;; 3. ZERO-PADDED FORMATTER (Rule #4) & TRUE SHOELACE CENTROID IN WCS (Rule #5 & #6)
+  ;; 3. ZERO-PADDED FORMATTER, 4-LAYER CLIPBOARD & TRUE SHOELACE CENTROID
   ;; =========================================================================
   (defun fmt-dec (val dec / s dotPos fracLen)
-    (if (fboundp 'jrk:fmt-dec)
+    (if (boundp 'jrk:fmt-dec)
       (jrk:fmt-dec val dec)
       (progn
-        (setq s (rtos val 2 dec)
-              dotPos (vl-string-search "." s)
-        )
-        (if (null dotPos)
+        (setvar "DIMZIN" 0)
+        (setq s (rtos val 2 dec))
+        (if (> dec 0)
           (progn
-            (setq s (strcat s "."))
-            (repeat dec (setq s (strcat s "0")))
-          )
-          (progn
-            (setq fracLen (- (strlen s) dotPos 1))
-            (while (< fracLen dec)
-              (setq s (strcat s "0") fracLen (1+ fracLen))
+            (setq dotPos (vl-string-search "." s))
+            (if (null dotPos)
+              (progn
+                (setq s (strcat s "."))
+                (repeat dec (setq s (strcat s "0")))
+              )
+              (progn
+                (setq fracLen (- (strlen s) dotPos 1))
+                (while (< fracLen dec)
+                  (setq s (strcat s "0") fracLen (1+ fracLen))
+                )
+              )
             )
           )
         )
@@ -95,17 +78,120 @@
     )
   )
 
-  (defun get-poly-center (e / elist pts elev n k p1 p2 cross areaSum cxSum cySum cx cy)
-    (if (fboundp 'jrk:get-poly-centroid-wcs)
+  (defun copy-clip (txt / html pw clip ok tmpDir tmp fh wsh cmd pid safeTxt i ch tmpEnt)
+    (if (boundp 'jrk:copy-clip)
+      (jrk:copy-clip txt)
+      (progn
+        (setq ok nil)
+
+        ;; Layer 1: htmlfile COM ClipboardData
+        (setq html (vl-catch-all-apply 'vlax-create-object (list "htmlfile")))
+        (if (and html (not (vl-catch-all-error-p html)))
+          (progn
+            (setq pw (vl-catch-all-apply 'vlax-get (list html 'ParentWindow)))
+            (if (and pw (not (vl-catch-all-error-p pw)))
+              (progn
+                (setq clip (vl-catch-all-apply 'vlax-get (list pw 'ClipboardData)))
+                (if (and clip (not (vl-catch-all-error-p clip)))
+                  (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list clip 'setData "Text" txt))))
+                    (setq ok T)
+                  )
+                )
+              )
+            )
+            (vl-catch-all-apply 'vlax-release-object (list html))
+          )
+        )
+
+        ;; Layer 2: WScript.Shell synchronous clip.exe
+        (if (not ok)
+          (progn
+            (setq tmpDir (cond ((getenv "TEMP")) ((getenv "TMP")) ((getvar "TEMPPREFIX")) (".")))
+            (setq tmp (if (boundp 'vl-filename-mktemp)
+                        (vl-filename-mktemp "jrk_clip_" tmpDir ".txt")
+                        (strcat tmpDir "\\jrk_clip.txt")))
+            (if (and tmp (setq fh (open tmp "w")))
+              (progn
+                (princ txt fh)
+                (close fh)
+                (setq cmd (strcat "cmd.exe /c clip < \"" tmp "\""))
+                (setq wsh (vl-catch-all-apply 'vlax-create-object (list "WScript.Shell")))
+                (if (and wsh (not (vl-catch-all-error-p wsh)))
+                  (progn
+                    (if (not (vl-catch-all-error-p (vl-catch-all-apply 'vlax-invoke (list wsh 'Run cmd 0 :vlax-true))))
+                      (setq ok T)
+                    )
+                    (vl-catch-all-apply 'vlax-release-object (list wsh))
+                  )
+                )
+                (if (boundp 'vl-file-delete) (vl-file-delete tmp))
+              )
+            )
+          )
+        )
+
+        ;; Layer 3: AutoCAD LT 2024+ & Windows 11 Safe startapp + clip.exe
+        (if (and (not ok) (boundp 'startapp))
+          (progn
+            (setq safeTxt "" i 1)
+            (while (<= i (strlen txt))
+              (setq ch (substr txt i 1))
+              (if (not (member ch '("\"" "&" "|" "<" ">" "^" "%")))
+                (setq safeTxt (strcat safeTxt ch))
+              )
+              (setq i (1+ i))
+            )
+            (setq pid (vl-catch-all-apply 'startapp
+                        (list "cmd.exe" (strcat "/c <nul set /p=\"" safeTxt "\" | clip"))))
+            (if (and pid (not (vl-catch-all-error-p pid)) (numberp pid) (> pid 0))
+              (setq ok T)
+            )
+          )
+        )
+
+        ;; Layer 4: Pure CAD Native _.COPYCLIP Fallback
+        (if (not ok)
+          (if (entmake (list '(0 . "TEXT")
+                             '(10 0.0 0.0 0.0)
+                             '(40 . 1.0)
+                             (cons 1 txt)))
+            (progn
+              (setq tmpEnt (entlast))
+              (vl-catch-all-apply 'command (list "_.COPYCLIP" tmpEnt ""))
+              (entdel tmpEnt)
+              (setq ok T)
+            )
+          )
+        )
+
+        ok
+      )
+    )
+  )
+
+  (defun get-poly-center (e / elist typ pts elev sub subEd n k p1 p2 cross areaSum cxSum cySum cx cy)
+    (if (boundp 'jrk:get-poly-centroid-wcs)
       (jrk:get-poly-centroid-wcs e)
       (progn
         (setq elist (entget e)
+              typ   (cdr (assoc 0 elist))
               pts   nil
               elev  (if (assoc 38 elist) (cdr (assoc 38 elist)) 0.0)
         )
-        (foreach item elist
-          (if (= (car item) 10)
-            (setq pts (cons (cdr item) pts))
+        (if (= typ "POLYLINE")
+          (progn
+            (setq sub (entnext e))
+            (while (and sub (/= (cdr (assoc 0 (setq subEd (entget sub)))) "SEQEND"))
+              (if (= (cdr (assoc 0 subEd)) "VERTEX")
+                (setq pts (cons (cdr (assoc 10 subEd)) pts))
+              )
+              (setq sub (entnext sub))
+            )
+          )
+          (foreach item elist
+            (if (= (car item) 10)
+              (setq pts (cons (cdr item) pts))
+            )
           )
         )
         (setq pts (reverse pts)
@@ -159,11 +245,9 @@
         (setq area (getvar "AREA"))
         (setq totalArea (+ totalArea area))
 
-        ;; Format individual area & locate true WCS centroid
-        (setq mArea (/ area 1000000.0))  ;; mm² to m²
+        (setq mArea (/ area 1000000.0))
         (setq center (get-poly-center ent))
 
-        ;; Inject centered text label (Middle-Center alignment: 72=1, 73=2)
         (if center
           (entmake (list '(0 . "TEXT")
                          (cons 1 (strcat (fmt-dec mArea decimals) " m2"))
@@ -177,8 +261,10 @@
       )
       (command "_.UNDO" "_End")
       (setq undoStarted nil)
-      (princ (strcat "\n>> Processed " (itoa i) " polylines. TOTAL AREA: "
-                     (fmt-dec (/ totalArea 1000000.0) decimals) " m2"))
+      (setq totalText (fmt-dec (/ totalArea 1000000.0) decimals))
+      (if (copy-clip totalText)
+        (princ (strcat "\n>> Processed " (itoa i) " polylines. TOTAL AREA: " totalText " m2 (Copied to Clipboard!)"))
+        (princ (strcat "\n>> Processed " (itoa i) " polylines. TOTAL AREA: " totalText " m2")))
     )
     (princ "\nNo closed polylines selected.")
   )

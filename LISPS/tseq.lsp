@@ -2,27 +2,30 @@
 ;;; SYSTEM      : Civil & Infrastructure CAD Automation Suite
 ;;; MODULE      : tseq.lsp
 ;;; COMMAND     : TSEQ
-;;; DESCRIPTION : Universal Smart ID Sequencer (v6.0 - Any Pipe Detail Proof).
-;;;               Auto-detects the ID across ANY delimiter (",", ";", ":",
-;;;               " - ", "/", space, or "\P") and ANY diameter symbol
-;;;               (%%c, Ø, ∅, \U+2205, \U+00F8, mm, box size) in TEXT, MTEXT,
-;;;               MULTILEADER, or ATTRIB while locking all pipe details.
+;;; DESCRIPTION : Universal Smart ID Sequencer (v7.0).
+;;;               - Preserves parenthetical tags like "(260 PE)", "(EXTG)", "(STP)"
+;;;               - Allows spaces when typing IDs (e.g. "MH 8") by temporarily
+;;;                 disabling DYNMODE so Spacebar never prematurely submits
+;;;               - Supports TEXT, MTEXT, MULTILEADER, and ATTRIB (LT 2024+ Safe)
 ;;; COMPATIBILITY: Universal (AutoCAD, AutoCAD LT 2024+, GstarCAD, ZWCAD)
 ;;; ==========================================================================
 
 (vl-load-com)
 
-(defun c:tseq ( / *error* oldCmd defSeq userSeq currStr parsed seqType pre val pad
+(defun c:tseq ( / *error* oldCmd oldDyn defSeq userSeq currStr parsed seqType pre val pad
                   loop sel ent subEnt pt ssPick elist entType oldTxt res mode oldID newTxt
                   history lastItem
                   ts:trim ts:digit-p ts:lead-digits ts:starts-with-3digits-p
-                  get-text put-text
-                  replace-id split-str pad-num )
+                  ts:ask-id-string ts:toggle-space
+                  get-text put-text replace-id split-str pad-num )
 
-  (setq oldCmd (getvar "CMDECHO"))
+  (setq oldCmd (getvar "CMDECHO")
+        oldDyn (vl-catch-all-apply 'getvar (list "DYNMODE")))
+  (if (vl-catch-all-error-p oldDyn) (setq oldDyn nil))
   (setvar "CMDECHO" 0)
 
   (defun *error* (msg)
+    (if oldDyn (vl-catch-all-apply 'setvar (list "DYNMODE" oldDyn)))
     (if oldCmd (setvar "CMDECHO" oldCmd))
     (if (and msg (not (member (strcase msg) '("CONSOLE BREAK" "FUNCTION CANCELLED" "QUIT / EXIT ABORT"))))
       (princ (strcat "\n[TSEQ Error]: " msg))
@@ -31,7 +34,7 @@
   )
 
   ;; =========================================================================
-  ;; 1. PURE AUTOLISP STRING & TOKEN HELPERS
+  ;; 1. PURE AUTOLISP STRING, INPUT & TOKEN HELPERS
   ;; =========================================================================
   (defun ts:trim (s / len i1 i2)
     (if (or (null s) (/= (type s) 'STR))
@@ -59,7 +62,6 @@
     )
   )
 
-  ;; Counts how many consecutive digits appear at the start of string `s`
   (defun ts:lead-digits (s / len i)
     (setq len (strlen s) i 1)
     (while (and (<= i len) (ts:digit-p (substr s i 1)))
@@ -68,11 +70,44 @@
     (1- i)
   )
 
-  ;; Checks if string `s` starts (after optional spaces) with a 3-or-4 digit pipe size (e.g. "600...", "1200...")
   (defun ts:starts-with-3digits-p (s / trimmed nDig)
     (setq trimmed (ts:trim s)
           nDig    (ts:lead-digits trimmed))
     (and (>= nDig 3) (<= nDig 4))
+  )
+
+  ;; Temporarily disables DYNMODE during getstring so pressing Spacebar types a
+  ;; real space (e.g. "MH 8") instead of submitting the Dynamic Input tooltip box.
+  (defun ts:ask-id-string (promptStr / curDyn ans)
+    (setq curDyn (vl-catch-all-apply 'getvar (list "DYNMODE")))
+    (if (and curDyn (not (vl-catch-all-error-p curDyn)) (/= curDyn 0))
+      (vl-catch-all-apply 'setvar (list "DYNMODE" 0))
+    )
+    (setq ans (getstring T promptStr))
+    (if (and curDyn (not (vl-catch-all-error-p curDyn)) (/= curDyn 0))
+      (vl-catch-all-apply 'setvar (list "DYNMODE" curDyn))
+    )
+    (if ans (ts:trim ans) "")
+  )
+
+  ;; Toggles a single space between alphabetic prefix and trailing number ("MH8" <-> "MH 8")
+  (defun ts:toggle-space (str / p st pfx numStr)
+    (setq p  (split-str str)
+          st (nth 0 p))
+    (if (= st "NUM")
+      (progn
+        (setq pfx    (nth 1 p)
+              numStr (pad-num (nth 2 p) (nth 3 p)))
+        (if (and (> (strlen pfx) 0) (= (substr pfx (strlen pfx) 1) " "))
+          (strcat (ts:trim pfx) numStr)
+          (if (> (strlen pfx) 0)
+            (strcat pfx " " numStr)
+            str
+          )
+        )
+      )
+      str
+    )
   )
 
   ;; =========================================================================
@@ -84,12 +119,10 @@
           typ   (cdr (assoc 0 elist))
           res   nil)
 
-    ;; Layer 1: Native AutoCAD 2024+ / LT 2024+ getpropertyvalue for MULTILEADER
     (if (and (= typ "MULTILEADER") (boundp 'getpropertyvalue))
       (setq res (vl-catch-all-apply 'getpropertyvalue (list ent "MText/Contents")))
     )
 
-    ;; Layer 2: ActiveX TextString property
     (if (or (null res) (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
       (progn
         (setq obj (vl-catch-all-apply 'vlax-ename->vla-object (list ent)))
@@ -99,7 +132,6 @@
       )
     )
 
-    ;; Layer 3: Pure DXF fallback (skips "LEADER_LINE{" in MULTILEADER & joins MTEXT chunks)
     (if (or (null res) (vl-catch-all-error-p res) (/= (type res) 'STR) (= res ""))
       (cond
         ((= typ "MULTILEADER")
@@ -136,7 +168,6 @@
           ok    nil)
 
     (cond
-      ;; A. MULTILEADER: Native AutoCAD 2024+ setpropertyvalue + ActiveX + DXF 304
       ((= typ "MULTILEADER")
        (if (boundp 'setpropertyvalue)
          (if (not (vl-catch-all-error-p
@@ -173,7 +204,6 @@
          )
        ))
 
-      ;; B. MTEXT: Clear overflow DXF 3 chunks, update DXF 1, and sync property
       ((= typ "MTEXT")
        (setq newElist nil)
        (foreach item elist
@@ -196,7 +226,6 @@
          )
        ))
 
-      ;; C. Standard TEXT / ATTRIB / ATTDEF
       (T
        (if (assoc 1 elist)
          (entmod (subst (cons 1 newTxt) (assoc 1 elist) elist))
@@ -210,23 +239,18 @@
 
   ;; =========================================================================
   ;; 3. VERSATILE PIPE / DRAIN / MANHOLE ID DETECTOR & REPLACER
-  ;;    Handles ANY pipe detail delimiter & diameter symbol:
-  ;;    - Comma (with or without space): "5c,600Ø 17m 1:100" -> "6a,600Ø 17m 1:100"
-  ;;    - Semicolon                    : "{\W0.5;A01; 600%%c 28m 1:000}"
-  ;;    - Colon                        : "A29g: 600%%c 20m 1:000"
-  ;;    - Space                        : "A01 600%%c 20m 1:500" or "5c 600x600 17m"
-  ;;    - Spaced Dash or Slash         : "5c - 600%%c 17m" or "5c/600%%c 17m"
-  ;;    - Multi-line                   : "A01\P600%%c\P6m\P1:1000"
-  ;;    - Manhole Callout              : "MH-01;\PGL: 34.50m\PIL: 32.10m"
-  ;;    - Single-Token ID              : "D01", "5c", "MH-01"
+  ;;    - Stops BEFORE parenthetical notes like " (260 PE)", "(EXTG)", "(STP)"
+  ;;      so "MH 8 (260 PE)\PGL=6.40..." -> "MH 9 (260 PE)\PGL=6.40..."
+  ;;    - Handles ",", ";", ":", " - ", "/", space, and "\P" delimiters
   ;; =========================================================================
   (defun replace-id (txt newID / len i loopP ch sec semi stylePrefix remTxt uRem
                                  pSemi pComma pColon pSlash pDashSp pSlashP pCR pLF pBrace pSpace
+                                 pSpParen pParen parenBound
                                  diaMarkers m pos pDia nLead afterLead startsWithBareDia
                                  punctCands firstPunct endPos p suffix oldID)
     (setq len (strlen txt) i 1 loopP T)
 
-    ;; Step A: Walk past ALL leading MTEXT formatting codes ({\W0.5;, {\f...;, \A1;, \pxqc;, etc.)
+    ;; Step A: Walk past leading MTEXT formatting codes ({\W0.5;, {\f...;, \A1;, \pxqc;, etc.)
     (while (and loopP (<= i len))
       (setq ch  (substr txt i 1)
             sec (if (< i len) (substr txt (1+ i) 1) ""))
@@ -250,18 +274,29 @@
     (setq uRem        (strcase remTxt))
 
     ;; Step B: Locate all structural delimiters in the visible text
-    (setq pSemi   (vl-string-search ";" remTxt)
-          pComma  (vl-string-search "," remTxt)
-          pColon  (vl-string-search ":" remTxt)
-          pSlash  (vl-string-search "/" remTxt)
-          pDashSp (vl-string-search " - " remTxt)
-          pSlashP (vl-string-search "\\P" uRem)
-          pCR     (vl-string-search "\r" remTxt)
-          pLF     (vl-string-search "\n" remTxt)
-          pBrace  (vl-string-search "}" remTxt)
-          pSpace  (vl-string-search " " remTxt))
+    (setq pSemi    (vl-string-search ";" remTxt)
+          pComma   (vl-string-search "," remTxt)
+          pColon   (vl-string-search ":" remTxt)
+          pSlash   (vl-string-search "/" remTxt)
+          pDashSp  (vl-string-search " - " remTxt)
+          pSlashP  (vl-string-search "\\P" uRem)
+          pCR      (vl-string-search "\r" remTxt)
+          pLF      (vl-string-search "\n" remTxt)
+          pBrace   (vl-string-search "}" remTxt)
+          pSpace   (vl-string-search " " remTxt)
+          pSpParen (vl-string-search " (" remTxt)
+          pParen   (vl-string-search "(" remTxt))
 
-    ;; Find earliest diameter / pipe specification marker across all CAD symbols
+    ;; Detect parenthetical notes such as " (260 PE)", "(260 PE)", " (EXTG)", " (STP)"
+    (setq parenBound nil)
+    (cond
+      ((and pSpParen (> pSpParen 0))
+       (setq parenBound pSpParen))
+      ((and pParen (> pParen 0))
+       (setq parenBound pParen))
+    )
+
+    ;; Find earliest diameter / pipe specification marker
     (setq diaMarkers '("%%C" "MM" "\\U+00F8" "\\U+00D8" "\\U+2205" "\\U+2300" "Ø" "∅" "⌀" "DIA" "VCP" "RCP" "HDPE" "UPVC")
           pDia       nil)
     (foreach m diaMarkers
@@ -272,7 +307,6 @@
     )
 
     ;; Check if label starts DIRECTLY with a 3-or-4 digit pipe diameter (e.g. "600%%c 17m" or "225mm%%c VCP")
-    ;; Note: "5c,600Ø" has only 1 leading digit ("5") followed by "C,", so nLead=1 -> NEVER mistaken for bare diameter!
     (setq nLead             (ts:lead-digits uRem)
           afterLead         (ts:trim (substr uRem (1+ nLead)))
           startsWithBareDia (and (>= nLead 3)
@@ -280,7 +314,7 @@
                                  (or (wcmatch afterLead "MM*,%%C*,\\U+*,Ø*,∅*,⌀*,DIA*,VCP*,RCP*,HDPE*,UPVC*,X#*")
                                      (and pDia (<= pDia 5)))))
 
-    ;; Gather earliest punctuation delimiter (",", ";", ":", " - ", "/") that separates ID from pipe details
+    ;; Gather earliest punctuation delimiter (",", ";", ":", " - ", "/")
     (setq punctCands nil)
     (if pSemi
       (setq punctCands (cons pSemi punctCands))
@@ -306,12 +340,12 @@
     (cond
       ;; ---------------------------------------------------------------------
       ;; CASE 1: SEWERAGE MANHOLE (Contains GL=, IL=, GL:, IL:, D=, or DEPTH)
-      ;; Replaces ONLY the Manhole ID before ";", ",", "\P", or "}"
+      ;; Stops before " (260 PE)", ";", ",", "\P", or "}" so PE & levels stay intact
       ;; ---------------------------------------------------------------------
       ((or (wcmatch uRem "*GL=*,*IL=*,*GL:*,*IL:*,*DEPTH*,*\\PD=*")
            (and (wcmatch uRem "MH*,*MANHOLE*") (or pSlashP pCR pLF)))
        (setq endPos (strlen remTxt))
-       (foreach p (list pSemi pComma pSlashP pCR pLF pBrace)
+       (foreach p (list parenBound pSemi pComma pSlashP pCR pLF pBrace)
          (if (and p (< p endPos)) (setq endPos p))
        )
        (setq oldID  (substr remTxt 1 endPos)
@@ -320,8 +354,7 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 2: UN-ID'D PIPE (Starts directly with 3-4 digit pipe diameter like "225mm%%c VCP" or "600Ø 17m")
-      ;; Protects pipe specifications when there is no ID prefix
+      ;; CASE 2: UN-ID'D PIPE (Starts directly with 3-4 digit pipe diameter)
       ;; ---------------------------------------------------------------------
       (startsWithBareDia
        (list "SEWER_PIPE_NO_ID" "" txt)
@@ -329,12 +362,11 @@
 
       ;; ---------------------------------------------------------------------
       ;; CASE 3: PUNCTUATION-SEPARATED PIPE DETAIL (",", ";", ":", " - ", "/")
-      ;; Handles "5c,600Ø 17m 1:100", "A01; 600%%c 28m 1:000", "A29g: 600%%c", etc.
       ;; ---------------------------------------------------------------------
       (punctCands
        (setq firstPunct (apply 'min punctCands)
              endPos     firstPunct)
-       (foreach p (list pSlashP pCR pLF pBrace)
+       (foreach p (list parenBound pSlashP pCR pLF pBrace)
          (if (and p (< p endPos)) (setq endPos p))
        )
        (setq oldID  (substr remTxt 1 endPos)
@@ -343,15 +375,14 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 4: SPACE-SEPARATED PIPE DETAIL (No ",", ";", or ":")
-      ;; Handles "A01 600%%c 20m 1:500", "5c 600Ø 17m 1:100", "5c 600x600 17m"
+      ;; CASE 4: SPACE-SEPARATED PIPE DETAIL ("A01 600%%c 20m", "5c 600x600")
       ;; ---------------------------------------------------------------------
       ((and pSpace
             (<= pSpace 15)
             (or (and pDia (< pSpace pDia))
                 (ts:starts-with-3digits-p (substr uRem (+ pSpace 2)))))
        (setq endPos pSpace)
-       (foreach p (list pSlashP pCR pLF pBrace)
+       (foreach p (list parenBound pSlashP pCR pLF pBrace)
          (if (and p (< p endPos)) (setq endPos p))
        )
        (setq oldID  (substr remTxt 1 endPos)
@@ -360,11 +391,11 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 5: MULTI-LINE LABEL WITHOUT PUNCTUATION (Replaces Line 1 ID before \P)
+      ;; CASE 5: MULTI-LINE LABEL WITHOUT PUNCTUATION (Replaces Line 1 ID before \P or "(")
       ;; ---------------------------------------------------------------------
       ((or pSlashP pCR pLF)
        (setq endPos (strlen remTxt))
-       (foreach p (list pSlashP pCR pLF pBrace)
+       (foreach p (list parenBound pSlashP pCR pLF pBrace)
          (if (and p (< p endPos)) (setq endPos p))
        )
        (setq oldID  (substr remTxt 1 endPos)
@@ -373,7 +404,18 @@
       )
 
       ;; ---------------------------------------------------------------------
-      ;; CASE 6: SINGLE-TOKEN ID (e.g. "D01", "{\W0.5;5c}", "MH-01", "1A")
+      ;; CASE 6: SINGLE-LINE ID WITH PARENTHETICAL TAG (e.g. "MH 8 (260 PE)")
+      ;; ---------------------------------------------------------------------
+      (parenBound
+       (setq endPos parenBound)
+       (if (and pBrace (< pBrace endPos)) (setq endPos pBrace))
+       (setq oldID  (substr remTxt 1 endPos)
+             suffix (substr remTxt (1+ endPos)))
+       (list "TAGGED_ID" oldID (strcat stylePrefix newID suffix))
+      )
+
+      ;; ---------------------------------------------------------------------
+      ;; CASE 7: SINGLE-TOKEN ID (e.g. "D01", "5c", "MH 8", "MH-01")
       ;; ---------------------------------------------------------------------
       (T
        (setq endPos (if pBrace pBrace (strlen remTxt)))
@@ -386,9 +428,7 @@
 
   ;; =========================================================================
   ;; 4. SEQUENCE PARSER & INCREMENTER
-  ;;    Supports:
-  ;;    - Numeric suffix : "A01" -> "A02", "MH-01" -> "MH-02", "1" -> "2"
-  ;;    - Alpha suffix   : "5c"  -> "5d",  "1A"    -> "1B"
+  ;;    Supports spaces in prefix: "MH 8" -> pre="MH ", val=8, pad=1 -> "MH 9"
   ;; =========================================================================
   (defun split-str (str / len i numStr lst)
     (setq str (ts:trim str)
@@ -413,14 +453,14 @@
     s
   )
 
-  (princ "\nCommand: TSEQ v6.0 (Universal Pipe & Manhole ID Sequencer)")
+  (princ "\nCommand: TSEQ v7.0 (Universal Pipe & Manhole ID Sequencer)")
 
   ;; =========================================================================
-  ;; 5. STARTING ID SETUP (Type Starting ID or Press Enter for Default)
+  ;; 5. STARTING ID SETUP (Spaces Allowed - e.g. "MH 8", "MH-01", "A01", "5c")
   ;; =========================================================================
-  (setq defSeq "A01")
-  (setq userSeq (getstring T (strcat "\nEnter starting ID (e.g. 5c, A01, 1A, MH-01) or press Enter for <" defSeq ">: ")))
-  (setq currStr (if (= (ts:trim userSeq) "") defSeq (ts:trim userSeq)))
+  (setq defSeq "MH 1")
+  (setq userSeq (ts:ask-id-string (strcat "\nEnter starting ID (spaces allowed, e.g. MH 8, MH-01, A01, 5c) <" defSeq ">: ")))
+  (setq currStr (if (= userSeq "") defSeq userSeq))
 
   (setq parsed  (split-str currStr)
         seqType (nth 0 parsed)
@@ -431,20 +471,20 @@
         loop    T)
 
   ;; =========================================================================
-  ;; 6. CLICK-TO-RENAME LOOP (With Click-Through, Pick-Sample & Undo)
+  ;; 6. CLICK-TO-RENAME LOOP (With Set, Pick, Space Toggle, Click-Through & Undo)
   ;; =========================================================================
   (while loop
-    (initget "Set Pick Undo")
-    (setq sel (entsel (strcat "\nClick text to set ID to [" currStr "] [Set/Pick/Undo] <Exit>: ")))
+    (initget "Set Pick Space Undo")
+    (setq sel (entsel (strcat "\nClick text to set ID to [" currStr "] [Set/Pick/Space/Undo] <Exit>: ")))
     (cond
       ((null sel)
        (setq loop nil))
 
-      ;; Option "Set": Type a new current ID sequence on the fly
+      ;; Option "Set": Type a new current ID sequence on the fly (spaces allowed)
       ((= sel "Set")
-       (setq userSeq (getstring T (strcat "\nEnter new starting ID <" currStr ">: ")))
-       (if (/= (ts:trim userSeq) "")
-         (setq currStr (ts:trim userSeq)
+       (setq userSeq (ts:ask-id-string (strcat "\nEnter new starting ID (spaces allowed, e.g. MH 8) <" currStr ">: ")))
+       (if (/= userSeq "")
+         (setq currStr userSeq
                parsed  (split-str currStr)
                seqType (nth 0 parsed)
                pre     (nth 1 parsed)
@@ -452,6 +492,16 @@
                pad     (nth 3 parsed))
        )
        (princ (strcat "\n>> Active ID sequence set to [" currStr "].")))
+
+      ;; Option "Space": Toggle space between prefix and number ("MH8" <-> "MH 8")
+      ((= sel "Space")
+       (setq currStr (ts:toggle-space currStr)
+             parsed  (split-str currStr)
+             seqType (nth 0 parsed)
+             pre     (nth 1 parsed)
+             val     (nth 2 parsed)
+             pad     (nth 3 parsed))
+       (princ (strcat "\n>> Active ID spacing toggled to [" currStr "].")))
 
       ;; Option "Pick": Click an existing label in the drawing to adopt its ID + 1
       ((= sel "Pick")
@@ -509,7 +559,6 @@
              elist   (entget ent)
              entType (cdr (assoc 0 elist)))
 
-       ;; If user clicked a Block (INSERT) with Attributes, check sub-entity via nentselp
        (if (= entType "INSERT")
          (if (setq subEnt (nentselp pt))
            (if (member (cdr (assoc 0 (entget (car subEnt)))) '("ATTRIB" "TEXT" "MTEXT"))
@@ -520,7 +569,6 @@
          )
        )
 
-       ;; Click-Through Helper: If a pipe line or hatch overlaps the text, grab the text underneath!
        (if (not (member entType '("TEXT" "MTEXT" "MULTILEADER" "ATTRIB" "ATTDEF")))
          (if (setq ssPick (ssget pt '((0 . "TEXT,MTEXT,MULTILEADER"))))
            (setq ent     (ssname ssPick 0)
@@ -540,16 +588,14 @@
            (if (= mode "SEWER_PIPE_NO_ID")
              (princ "\n>> Skipped: This Pipe label has no ID prefix (starts directly with diameter). Click a label with an ID!")
              (progn
-               ;; Save state for Undo before modifying
                (setq history (cons (list ent oldTxt currStr) history))
 
                (put-text ent newTxt)
                (if (= entType "ATTRIB")
                  (entupd (cdr (assoc 330 elist)))
                )
-               (princ (strcat "\n>> [" mode "] Changed ID \"" oldID "\" -> \"" currStr "\" (Details preserved)."))
+               (princ (strcat "\n>> [" mode "] Changed ID \"" oldID "\" -> \"" currStr "\" (Details & PE preserved)."))
 
-               ;; Increment sequence for next click
                (cond
                  ((= seqType "NUM")
                   (setq val (1+ val) currStr (strcat pre (pad-num val pad))))
@@ -567,9 +613,10 @@
     )
   )
 
+  (if oldDyn (vl-catch-all-apply 'setvar (list "DYNMODE" oldDyn)))
   (if oldCmd (setvar "CMDECHO" oldCmd))
   (princ)
 )
 
-(princ "\nTSEQ v6.0 loaded. Type TSEQ to run.")
+(princ "\nTSEQ v7.0 loaded. Type TSEQ to run.")
 (princ)
